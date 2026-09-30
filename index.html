@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SpellDuel</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="bar">
+    <div>
+      <h1 class="brand">SPELLDUEL</h1>
+      <p>Online Double-Elimination Spelling Tournament</p>
+    </div>
+    <span id="pill" class="pill">READY</span>
+  </header>
+
+  <main>
+    <section id="landing" class="screen panel active">
+      <h2 class="title">SPELLDUEL</h2>
+      <p class="sub">Live spelling duels, automatic judging, and a big-screen bracket.</p>
+      <div class="modes">
+        <button class="mode" data-go="teacherLogin"><span class="emoji">👩‍🏫</span><b>Teacher</b><i>Dashboard &amp; Contest Control</i></button>
+        <button class="mode" data-go="studentJoin"><span class="emoji">📱</span><b>Student</b><i>Join a Contest</i></button>
+        <button class="mode" data-go="projectorJoin"><span class="emoji">📺</span><b>Projector</b><i>Live Display</i></button>
+      </div>
+    </section>
+
+    <section id="teacherLogin" class="screen panel narrow">
+      <h2 class="title sm">Teacher sign in</h2>
+      <input id="tEmail" type="email" placeholder="Email" autocomplete="username">
+      <input id="tPass" type="password" placeholder="Password" autocomplete="current-password">
+      <button class="btn" data-act="teacherLogin">Sign in</button>
+      <button class="link" data-go="landing">Back</button>
+    </section>
+
+    <section id="studentJoin" class="screen panel narrow">
+      <h2 class="title sm">Join a contest</h2>
+      <input id="sCode" placeholder="Contest code" maxlength="10" autocapitalize="characters">
+      <input id="sName" placeholder="Full name">
+      <input id="sNo" placeholder="Student number (optional)">
+      <button class="btn" data-act="join">Join contest</button>
+      <button class="link" data-go="landing">Back</button>
+    </section>
+
+    <section id="projectorJoin" class="screen panel narrow">
+      <h2 class="title sm">Projector display</h2>
+      <p class="sub">Enter the contest code to show the live bracket on the big screen.</p>
+      <input id="pCode" placeholder="Contest code" maxlength="10" autocapitalize="characters">
+      <button class="btn" data-act="projector">Open display</button>
+      <button class="link" data-go="landing">Back</button>
+    </section>
+
+    <section id="teacher" class="screen panel wide"></section>
+    <section id="student" class="screen panel narrow"></section>
+    <section id="projector" class="screen panel wide proj"></section>
+  </main>
+
+  <div id="toast" class="toast" role="status"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
