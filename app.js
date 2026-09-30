@@ -12,7 +12,10 @@ const nm = id => S.people.find(p => p.id === id)?.name;
 let tt;
 function toast(t) { const e = $("#toast"); e.textContent = t; e.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => e.classList.remove("show"), 2800); }
 function pill(t, c = "") { $("#pill").textContent = t; $("#pill").className = "pill " + c; }
-function show(id) { document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === id)); }
+function show(id) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === id));
+  $("#hLogout").hidden = id !== "teacher";
+}
 function go(id) {
   if (id === "landing") { leave(); pill("READY"); }
   show(id);
@@ -109,12 +112,17 @@ async function nextRound() {
   if (S.matches.some(m => m.status !== "done")) return toast("Finish the current matches first.");
   if (act.length < 2) return toast("Need at least 2 active contestants.");
   const round = Math.max(0, ...S.matches.map(m => m.round)) + 1;
-  act.sort(() => Math.random() - .5).sort((a, b) => a.losses - b.losses);     // same-loss players meet first
   const rows = [];
-  for (let i = 0; i < act.length; i += 2) {
-    const p2 = act[i + 1];
-    rows.push({ contest_id: S.contest.id, round, p1: act[i].id, p2: p2?.id || null, status: p2 ? "pending" : "done", winner: p2 ? null : act[i].id });
+  if (act.length % 2) {                                                        // odd number → one bye
+    const had = new Set(S.matches.filter(m => !m.p2).map(m => m.p1));
+    const pool = act.filter(p => !had.has(p.id));                              // nobody gets a second bye first
+    const b = (pool.length ? pool : act)[Math.floor(Math.random() * (pool.length || act.length))];
+    act.splice(act.indexOf(b), 1);
+    rows.push({ contest_id: S.contest.id, round, p1: b.id, p2: null, status: "done", winner: b.id });
   }
+  act.sort(() => Math.random() - .5).sort((a, b) => a.losses - b.losses);     // same-loss players meet first
+  for (let i = 0; i < act.length; i += 2)
+    rows.push({ contest_id: S.contest.id, round, p1: act[i].id, p2: act[i + 1].id, status: "pending" });
   const { error } = await sb.from("matches").insert(rows);
   if (error) return toast("Could not create round: " + error.message);
   await sb.from("contests").update({ status: "live" }).eq("id", S.contest.id);
@@ -140,7 +148,7 @@ function renderTeacher() {
   if (!c || S.creating) {
     body = `<div class="narrow" style="max-width:520px;margin:auto"><h3>New contest</h3><br>
       <input id="cName" placeholder="Contest name">
-      <select id="cCap">${[4, 8, 16, 32, 64].map(n => `<option value="${n}" ${n === 16 ? "selected" : ""}>${n} contestants</option>`).join("")}</select>
+      <input id="cCap" type="number" min="2" max="500" inputmode="numeric" placeholder="Number of students (e.g. 15)">
       <select id="cSec"><option value="strict">Strict: disqualify on leaving the screen</option><option value="warning">One warning, then disqualify</option></select>
       <button class="btn" data-act="createContest">Create contest</button>
       ${c ? `<button class="link" data-act="cancelNew">Cancel</button>` : ""}</div>`;
@@ -148,6 +156,8 @@ function renderTeacher() {
     body = `<div class="row"><h3>${esc(c.name)}</h3><button class="btn ghost" data-act="newContest">New contest</button></div>
       <div class="stats">${[["Contestants", S.people.length], ["Matches", S.matches.length], ["Words", S.words.length], ["Violations", S.events.length]]
         .map(([l, n]) => `<div class="card stat"><b>${n}</b><span>${l}</span></div>`).join("")}</div>
+      <div class="card row" style="margin-bottom:26px"><div><b>Number of students</b><br><small>${S.people.length} joined. An odd number gives one student a bye each round.</small></div>
+      <div style="display:flex;gap:10px;align-items:center"><input id="capIn" type="number" min="2" max="500" value="${c.capacity}" style="width:110px;margin:0"><button class="btn ghost sm" data-act="setCap">Update</button></div></div>
       <div class="card center"><p class="sub" style="margin-bottom:8px">Contest code</p><div class="code">${esc(c.code)}</div><br>
       <button class="btn ghost" data-act="copy">Copy code</button> <button class="btn" data-act="openProjector">Open projector</button></div>`;
   } else if (S.tab === "contestants") {
@@ -174,8 +184,7 @@ function renderTeacher() {
       `<div class="card" style="margin-bottom:12px"><b>${esc(nm(e.contestant_id))}</b> <span class="tag ${e.severity === "dq" ? "disqualified" : ""}">${e.severity === "dq" ? "disqualified" : "warning"}</span><p>${esc(e.reason)}</p><small>${new Date(e.created_at).toLocaleString()}</small></div>`).join("")
       : `<p class="empty">No security violations.</p>`}`;
   }
-  $("#teacher").innerHTML = (c && !S.creating ? `<nav class="tabs">${tabs.map(([k, l]) => `<button class="tab ${S.tab === k ? "on" : ""}" data-act="tab" data-id="${k}">${l}</button>`).join("")}
-    <button class="tab" data-act="logout" style="margin-left:auto">Sign out</button></nav>` : "") + body;
+  $("#teacher").innerHTML = (c && !S.creating ? `<nav class="tabs">${tabs.map(([k, l]) => `<button class="tab ${S.tab === k ? "on" : ""}" data-act="tab" data-id="${k}">${l}</button>`).join("")}</nav>` : "") + body;
 }
 
 /* ---------- student UI ---------- */
@@ -281,11 +290,20 @@ const act = {
   newContest() { S.creating = true; renderTeacher(); },
   cancelNew() { S.creating = false; renderTeacher(); },
   async createContest() {
-    const name = val("cName"); if (!name) return toast("Enter a contest name.");
-    const { data, error } = await sb.from("contests").insert({ name, code: genCode(), capacity: +$("#cCap").value, security_mode: $("#cSec").value }).select().single();
+    const name = val("cName"), cap = parseInt(val("cCap"), 10);
+    if (!name) return toast("Enter a contest name.");
+    if (!cap || cap < 2) return toast("Enter the number of students (at least 2).");
+    const { data, error } = await sb.from("contests").insert({ name, code: genCode(), capacity: cap, security_mode: $("#cSec").value }).select().single();
     if (error) return toast("Could not create contest: " + error.message);
     S.creating = false; S.tab = "overview"; S.contest = data; S.people = []; S.matches = []; S.words = []; S.answers = []; S.events = [];
     subscribe(); doRefresh(); toast("Contest created.");
+  },
+  async setCap() {
+    const n = parseInt(val("capIn"), 10);
+    if (!n || n < Math.max(2, S.people.length)) return toast(`Enter at least ${Math.max(2, S.people.length)} (students already joined).`);
+    const { error } = await sb.from("contests").update({ capacity: n }).eq("id", S.contest.id);
+    if (error) return toast(error.message);
+    toast("Number of students updated."); doRefresh();
   },
   copy() { navigator.clipboard.writeText(S.contest.code); toast("Code copied."); },
   openProjector() { window.open(`${location.pathname}?projector=${S.contest.code}`, "_blank"); },

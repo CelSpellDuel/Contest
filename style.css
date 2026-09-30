@@ -10,6 +10,10 @@ button{cursor:pointer}
 .brand{margin:0;font-size:36px;letter-spacing:.1em}
 .bar p{margin:4px 0 0;font-size:18px}
 .pill{background:var(--green);color:#fff;font:700 17px var(--serif);letter-spacing:.08em;padding:12px 24px;border-radius:999px}
+.right{display:flex;align-items:center;gap:14px}
+.out{background:transparent;color:#fff;border:1px solid #fff;border-radius:999px;padding:11px 22px;font:700 16px var(--serif);letter-spacing:.06em}
+.out:hover{background:rgba(255,255,255,.12)}
+.out[hidden]{display:none}
 .pill.off{background:#6b7d92}.pill.warn{background:var(--amber)}
 
 .panel{display:none;width:min(1760px,calc(100% - 48px));margin:36px auto 60px;background:#fff;border-radius:40px;padding:48px;box-shadow:0 30px 70px rgba(19,45,75,.12)}
