@@ -19,11 +19,10 @@
   <main>
     <section id="landing" class="screen panel active">
       <h2 class="title">SPELLDUEL</h2>
-      <p class="sub">Live spelling duels, automatic judging, and a big-screen bracket.</p>
+      <p class="sub">Live spelling duels, automatic judging, and a big-screen live display.</p>
       <div class="modes">
         <button class="mode" data-go="teacherLogin"><span class="emoji">👩‍🏫</span><b>Teacher</b><i>Dashboard &amp; Contest Control</i></button>
         <button class="mode" data-go="studentJoin"><span class="emoji">📱</span><b>Student</b><i>Join a Contest</i></button>
-        <button class="mode" data-go="projectorJoin"><svg class="emoji" viewBox="0 0 64 64" width="58" height="58" aria-hidden="true"><rect x="3" y="8" width="58" height="37" rx="5" fill="#132d4b"/><rect x="7" y="12" width="50" height="29" rx="2" fill="#2b8f5b"/><path d="M27 19l14 7.5-14 7.5z" fill="#fff"/><path d="M45 18a8 8 0 0 1 9 0M47.500 21.500a4 4 0 0 1 4.500 0" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/><path d="M20 55h24M32 45v10" stroke="#132d4b" stroke-width="4" stroke-linecap="round"/></svg><b>Projector</b><i>Live Display</i></button>
       </div>
     </section>
 
@@ -44,18 +43,8 @@
       <button class="link" data-go="landing">Back</button>
     </section>
 
-    <section id="projectorJoin" class="screen panel narrow">
-      <h2 class="title sm">Projector display</h2>
-      <p class="sub">Enter the contest code to show the live bracket on the big screen.</p>
-      <input id="pCode" placeholder="Contest code" maxlength="10" autocapitalize="characters">
-      <input id="pPin" placeholder="Projector PIN (from the teacher Overview)" maxlength="12" autocapitalize="characters">
-      <button class="btn" data-act="projector">Open display</button>
-      <button class="link" data-go="landing">Back</button>
-    </section>
-
     <section id="teacher" class="screen panel wide"></section>
     <section id="student" class="screen panel narrow"></section>
-    <section id="projector" class="screen panel wide proj"></section>
   </main>
 
   <div id="toast" class="toast" role="status"></div>

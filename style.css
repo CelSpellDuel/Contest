@@ -23,7 +23,7 @@ button{cursor:pointer}
 .title.sm{font-size:38px}
 .sub{font:22px/1.5 var(--serif);color:var(--muted);text-align:center;margin:0 0 32px}
 
-.modes{display:grid;grid-template-columns:repeat(3,1fr);gap:26px}
+.modes{display:grid;grid-template-columns:repeat(2,1fr);gap:26px}
 .mode{background:#fff;border:1px solid var(--line);border-radius:44px;padding:56px 20px;display:flex;flex-direction:column;align-items:center;gap:10px}
 .mode:hover{border-color:var(--muted)}
 .emoji{font-size:58px;line-height:1}
@@ -123,3 +123,8 @@ svg,img{max-width:100%}
   .vs{font-size:clamp(24px,8vw,40px)}.mask{font-size:22px;letter-spacing:.12em}
   .empty{font-size:17px;padding:18px}
 }
+
+/* projector tab inside teacher view */
+.proj{padding:0}
+#teacher:fullscreen{background:var(--bg);padding:44px 56px;overflow:auto}
+#teacher:fullscreen .tabs{display:none}

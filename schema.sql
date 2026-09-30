@@ -107,7 +107,7 @@ create policy "owner manages answers" on answers for all using (owns(contest_id)
 create policy "student reports" on security_events for insert with check (is_me(contestant_id));
 create policy "owner reads events" on security_events for all using (owns(contest_id)) with check (owns(contest_id));
 
--- Secret word data: only the teacher, the two duelists of a live match, and a projector that knows the PIN can read it.
+-- Secret word data: only the teacher, the two duelists of a live match can read it.
 create table match_secrets (
   match_id uuid primary key references matches on delete cascade,
   contest_id uuid not null references contests on delete cascade,
@@ -115,26 +115,10 @@ create table match_secrets (
   word text not null, definition text not null, example text,
   created_at timestamptz default now()
 );
-create table contest_keys (
-  contest_id uuid primary key references contests on delete cascade,
-  projector_pin text not null default upper(substr(md5(random()::text || clock_timestamp()::text), 1, 8))
-);
 alter table match_secrets enable row level security;
-alter table contest_keys enable row level security;
 create policy "owner manages secrets" on match_secrets for all using (owns(contest_id)) with check (owns(contest_id));
 create policy "duelists read live secret" on match_secrets for select using (
   exists (select 1 from matches m where m.id = match_id and m.status = 'live' and (is_me(m.p1) or is_me(m.p2))));
-create policy "owner manages keys" on contest_keys for all using (owns(contest_id)) with check (owns(contest_id));
-create function projector_words(p_code text, p_pin text)
-returns table(match_id uuid, attempt int, word text, definition text, example text)
-language sql stable security definer set search_path = public as
-$$ select s.match_id, s.attempt, s.word, s.definition, s.example
-   from contests c
-   join contest_keys k on k.contest_id = c.id
-   join matches m on m.contest_id = c.id and m.status = 'live'
-   join match_secrets s on s.match_id = m.id
-   where c.code = upper(p_code) and k.projector_pin = upper(p_pin) $$;
-grant execute on function projector_words(text, text) to anon, authenticated;
 
 -- Realtime
 alter publication supabase_realtime add table contests, contestants, matches, answers, security_events, match_secrets;

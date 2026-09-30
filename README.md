@@ -15,7 +15,7 @@ Static site (HTML/CSS/JS) + Supabase. No build step.
 ## Using it
 - **Teacher:** sign in, create a contest, add words (just type the word; the definition and example fill in automatically), share the code.
 - **Students:** Student → enter code and name.
-- **Projector:** Projector → enter the code, or open `index.html?projector=CODE`. Press **F** for fullscreen.
+- **Projector:** teacher → **Projector** tab (next to Overview, Contestants, Word bank, Matches, Security). Press **F** or the Fullscreen button, then drag that window to the big screen.
 - Start round 1, then press **Start** on each match. Answers are judged automatically; a tie (both right or both wrong) gets a new word.
 - Keep the teacher tab open during the contest: it does the judging and advances the bracket.
 
@@ -28,5 +28,5 @@ Static site (HTML/CSS/JS) + Supabase. No build step.
 
 Paid alternative: add `ANTHROPIC_API_KEY` instead. If both exist, Gemini is used.
 
-Projector: enter the contest code **and the Projector PIN** (shown on the teacher Overview; the "Open projector" button fills both in). Then press **Enable AI Master voice** once (browsers need a click). She then reads every new duel aloud.
+On the teacher **Projector** tab, press **Enable AI Master voice** once (browsers need a click). She then reads every new duel aloud. The secret word is never shown on screen, only its letter count.
 If AI Master is unavailable, the app falls back to a free dictionary.
