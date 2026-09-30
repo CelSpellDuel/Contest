@@ -165,10 +165,11 @@ function renderTeacher() {
       ${S.people.map((p, i) => `<tr><td>${i + 1}</td><td><b>${esc(p.name)}</b></td><td>${esc(p.student_no)}</td><td><span class="tag ${p.status}">${p.status}</span></td><td>${p.wins}</td><td>${p.losses}</td></tr>`).join("")}</table>
       ${S.people.length ? "" : `<p class="empty">Share code ${esc(c.code)} so students can join.</p>`}`;
   } else if (S.tab === "words") {
-    body = `<h3>Word bank</h3><br><textarea id="wBulk" placeholder="One word per line:&#10;necessary | needed or required | Sleep is necessary for health."></textarea>
+    body = `<h3>Word bank</h3><br><p class="sub" style="text-align:left;margin-bottom:14px">Type a word. The definition and example sentence are filled in automatically.</p>
+      <textarea id="wBulk" placeholder="necessary&#10;Add several at once: one word per line, or separate them with commas."></textarea>
       <button class="btn" data-act="addWords">Add words</button><br><br>
       <table><tr><th>Word</th><th>Definition</th><th>Example</th><th></th></tr>${S.words.map(w =>
-        `<tr><td><b>${esc(w.word)}</b> ${w.used ? '<span class="tag">used</span>' : ""}</td><td>${esc(w.definition)}</td><td>${esc(w.example)}</td><td><button class="btn ghost sm" data-act="delWord" data-id="${w.id}">Delete</button></td></tr>`).join("")}</table>`;
+        `<tr><td><b>${esc(w.word)}</b> ${w.used ? '<span class="tag">used</span>' : ""}</td><td>${esc(w.definition)}</td><td>${w.example ? esc(w.example) : '<span class="tag disqualified">no example</span>'}</td><td><button class="btn ghost sm" data-act="editWord" data-id="${w.id}">Edit</button> <button class="btn ghost sm" data-act="delWord" data-id="${w.id}">Delete</button></td></tr>`).join("")}</table>`;
   } else if (S.tab === "matches") {
     const last = Math.max(0, ...S.matches.map(m => m.round)), cur = S.matches.filter(m => m.round === last && m.p2);
     body = `<div class="row"><h3>${last ? "Round " + last : "Matches"}</h3><button class="btn" data-act="nextRound">${last ? "Start next round" : "Start round 1"}</button></div>
@@ -191,7 +192,7 @@ function renderTeacher() {
 function speak() {
   const m = S.cur; if (!m) return;
   speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(`${m.word}. ${m.definition}. ${m.example}. ${m.word}.`);
+  const u = new SpeechSynthesisUtterance(`${m.word}. ${m.definition}. ${m.example || ""} ${m.word}.`);
   u.rate = .85; speechSynthesis.speak(u);
 }
 function renderStudent() {
@@ -208,7 +209,7 @@ function renderStudent() {
   else if (me.status === "champion") h = `<div class="center"><div class="big">🏆</div><h2 class="title sm">You won the tournament</h2></div>`;
   else if (me.status === "eliminated") h = `<div class="center"><div class="big">👏</div><h2 class="title sm">You're out</h2><p class="sub">Two losses ends a run. Thanks for playing, ${esc(me.name)}.</p></div>`;
   else if (m) h = `<p class="sub" style="margin-bottom:18px">Round ${m.round} · versus <b>${opp(m)}</b></p>
-    <div class="wordcard"><button class="btn" data-act="speak">🔊 Play word</button><p>${esc(m.definition)}</p><p><em>“${esc(m.example)}”</em></p></div>
+    <div class="wordcard"><button class="btn" data-act="speak">🔊 Play word</button><p>${esc(m.definition)}</p>${m.example ? `<p><em>“${esc(m.example)}”</em></p>` : ""}</div>
     ${sent ? `<p class="sub">Answer sent. Waiting for your opponent…</p>` : `<input id="ans" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type the word" onpaste="return false"><button class="btn" data-act="submit">Submit answer</button>`}`;
   else h = `<div class="center"><div class="big">⏳</div><h2 class="title sm">You're in</h2><p class="sub">${esc(me.name)}<br>${next ? `Next: <b>${opp(next)}</b>. Waiting for the teacher to start your match.` : me.wins || me.losses ? "Waiting for the next round." : "Waiting for the teacher to start the contest."}</p></div>`;
   $("#student").innerHTML = h;
@@ -260,6 +261,18 @@ async function loadTeacherContest() {
   leave(); S.role = "teacher"; S.contest = data?.[0] || null; show("teacher");
   if (S.contest) { subscribe(); doRefresh(); } else renderTeacher();
 }
+async function lookup(word) {
+  try {
+    const r = await fetch("https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent(word));
+    if (!r.ok) return null;
+    let def = "", ex = "";
+    for (const e of await r.json()) for (const m of e.meanings || []) for (const d of m.definitions || []) {
+      if (!def) def = `(${m.partOfSpeech}) ${d.definition}`;
+      if (!ex && d.example) ex = d.example;
+    }
+    return def ? { definition: def, example: ex } : null;
+  } catch { return null; }
+}
 const genCode = () => Array.from({ length: 6 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random() * 32)]).join("");
 const act = {
   async teacherLogin() {
@@ -308,12 +321,38 @@ const act = {
   copy() { navigator.clipboard.writeText(S.contest.code); toast("Code copied."); },
   openProjector() { window.open(`${location.pathname}?projector=${S.contest.code}`, "_blank"); },
   async addWords() {
-    const rows = val("wBulk").split("\n").map(l => l.split("|").map(x => x.trim())).filter(r => r.length >= 3 && r[0])
-      .map(r => ({ contest_id: S.contest.id, word: r[0], definition: r[1], example: r.slice(2).join(" | ") }));
-    if (!rows.length) return toast("Use the format: word | definition | example");
-    const { error } = await sb.from("words").insert(rows);
-    if (error) return toast(error.message);
-    $("#wBulk").value = ""; toast(`${rows.length} word(s) added.`); doRefresh();
+    const lines = val("wBulk").split("\n").flatMap(l => l.includes("|") ? [l] : l.split(","));
+    const items = lines.map(x => x.trim()).filter(Boolean);
+    if (!items.length) return toast("Type a word first.");
+    toast("Looking up definitions…");
+    const have = new Set(S.words.map(w => norm(w.word))), rows = [], nf = [], noEx = [];
+    for (const it of items) {
+      const r = it.split("|").map(x => x.trim()), word = r[0];
+      if (!word || have.has(norm(word))) continue;
+      have.add(norm(word));
+      let def = r[1], ex = r.slice(2).join(" | ");
+      if (!def) {
+        const d = await lookup(word);
+        if (!d) { nf.push(word); continue; }
+        def = d.definition; ex = d.example;
+      }
+      if (!ex) noEx.push(word);
+      rows.push({ contest_id: S.contest.id, word, definition: def, example: ex });
+    }
+    if (rows.length) {
+      const { error } = await sb.from("words").insert(rows);
+      if (error) return toast(error.message);
+      $("#wBulk").value = "";
+    }
+    toast([`${rows.length} word(s) added.`, nf.length && `No dictionary entry: ${nf.join(", ")}.`, noEx.length && `No example sentence: ${noEx.join(", ")} (use Edit).`].filter(Boolean).join(" "));
+    doRefresh();
+  },
+  async editWord(d) {
+    const w = S.words.find(x => x.id === d.id); if (!w) return;
+    const def = prompt("Definition", w.definition); if (def === null) return;
+    const ex = prompt("Example sentence", w.example); if (ex === null) return;
+    await sb.from("words").update({ definition: def.trim(), example: ex.trim() }).eq("id", w.id);
+    refresh();
   },
   async delWord(d) { await sb.from("words").delete().eq("id", d.id); },
   nextRound,
