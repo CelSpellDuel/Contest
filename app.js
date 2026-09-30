@@ -226,7 +226,7 @@ function renderTeacher() {
       ${cur.map(m => {
         const got = S.answers.filter(a => a.match_id === m.id && a.attempt === m.attempt).length;
         return `<div class="card row"><div><b>${esc(nm(m.p1))}</b> vs <b>${esc(nm(m.p2))}</b> <span class="tag ${m.status}">${m.status}</span> <span class="tag">${m.bracket || "upper"}</span>
-        ${m.status === "live" ? `<br><small>Word: <b>${esc(m.word)}</b> · attempt ${m.attempt} · ${got}/2 answers</small>` : ""}</div>
+        ${m.status === "live" ? `<br><small>${m.word_len ? m.word_len + " letters" : "Word hidden"} · attempt ${m.attempt} · ${got}/2 answers</small>` : ""}</div>
         <div>
         ${m.status !== "done" ? `<button class="btn ghost sm" data-act="force" data-id="${m.id}" data-w="p1">${esc(nm(m.p1))} wins</button> <button class="btn ghost sm" data-act="force" data-id="${m.id}" data-w="p2">${esc(nm(m.p2))} wins</button>` : ""}</div></div>`;
       }).join("")}<br>${bracketsHtml()}`;
@@ -243,21 +243,43 @@ function renderTeacher() {
 /* ---------- student UI ---------- */
 let VOICE = null;
 function pickVoice() {
-  const v = speechSynthesis.getVoices().filter(x => /^en/i.test(x.lang));
-  VOICE = v.find(x => /aria|jenny|zira|samantha|libby|sonia|hazel|susan|karen|moira|tessa|female|google us english/i.test(x.name)) || v[0] || null;
+  const v = speechSynthesis.getVoices().filter(x => /^en([-_]|$)/i.test(x.lang));
+  const local = v.filter(x => x.localService);          // on-device voices work even with a weak connection
+  const pool = local.length ? local : v;
+  VOICE = pool.find(x => /aria|jenny|zira|samantha|libby|sonia|hazel|susan|karen|moira|tessa|female|google us english/i.test(x.name))
+    || pool.find(x => /^en[-_]US/i.test(x.lang)) || pool[0] || null;
 }
 if (TTS) { speechSynthesis.onvoiceschanged = pickVoice; pickVoice(); }
-function say(text) {
+// Accepts one string or an array of short parts. Each part is its own utterance, because browsers
+// silently drop or cut off long utterances. Everything is queued inside the tap, which phones require.
+function say(parts) {
   if (!TTS) return toast("This browser cannot read aloud.");
+  const list = (Array.isArray(parts) ? parts : [parts]).filter(Boolean);
   if (!VOICE) pickVoice();
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  if (VOICE) u.voice = VOICE;
-  u.rate = .85; u.pitch = 1.05;
-  speechSynthesis.speak(u);
+  const run = () => {
+    speechSynthesis.resume();
+    list.forEach(t => {
+      const u = new SpeechSynthesisUtterance(t);
+      u.lang = (VOICE && VOICE.lang ? VOICE.lang : "en-US").replace("_", "-");
+      if (VOICE) u.voice = VOICE;
+      u.rate = .85; u.pitch = 1.05; u.volume = 1;
+      u.onerror = e => { if (!["canceled", "interrupted"].includes(e.error)) toast("Could not play the audio (" + e.error + "). Check the volume and try again."); };
+      speechSynthesis.speak(u);
+    });
+  };
+  // Chrome drops a speak() that comes straight after cancel(), so only cancel (and wait a moment) if something is playing.
+  if (speechSynthesis.speaking || speechSynthesis.pending) { speechSynthesis.cancel(); setTimeout(run, 150); } else run();
 }
-const script = m => `The word is ${m.word}. ${(m.definition || "").replace(/^\(([^)]+)\)\s*/, "$1: ")}. ${m.example ? "Used in a sentence: " + m.example + "." : ""} Again, the word is ${m.word}.`;
-function speak() { if (S.cur) say(script(S.cur)); }
+const script = m => {
+  const def = (m.definition || "").trim().replace(/^\(([^)]+)\)\s*/, "$1: ").replace(/[.!?]+$/, "");
+  const ex = (m.example || "").trim();
+  return [`The word is ${m.word}.`, def && `${def}.`, ex && `Used in a sentence: ${ex}`, `Again, the word is ${m.word}.`].filter(Boolean);
+};
+function speak() {
+  const m = S.cur; if (!m) return;
+  if (!m.word || !m.definition) { toast("AI Master is still getting your word. Try again in a moment."); refresh(); return; }
+  say(script(m));
+}
 function renderStudent() {
   const me = S.people.find(p => p.id === S.me); if (!me) return;
   const mine = m => m.p1 === me.id || m.p2 === me.id;
