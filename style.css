@@ -85,3 +85,6 @@ th{color:var(--muted);font-size:14px}
 
 @media(max-width:900px){.modes,.stats{grid-template-columns:1fr}.panel{padding:26px;border-radius:28px}.title{font-size:42px}.brand{font-size:26px}.bar p{font-size:14px}.mode{padding:36px 20px}}
 @media(prefers-reduced-motion:reduce){.toast{transition:none}}
+
+.bar{flex-wrap:wrap;gap:12px}
+@media(max-width:600px){.bar{padding:16px}.right{margin-left:auto}.out{padding:9px 16px;font-size:14px}.pill{padding:9px 16px;font-size:14px}.panel{width:calc(100% - 24px);padding:20px;margin:18px auto 40px}}

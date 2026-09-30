@@ -8,6 +8,8 @@ const val = id => $("#" + id)?.value.trim() || "";
 const S = { role: null, contest: null, people: [], matches: [], words: [], answers: [], events: [], me: null, tab: "overview", ch: null, busy: false };
 sb.auth.onAuthStateChange((_e, sess) => { S.token = sess?.access_token; });
 const nm = id => S.people.find(p => p.id === id)?.name;
+const TTS = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+const LS = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { } }, del: k => { try { localStorage.removeItem(k); } catch { } } };
 
 /* ---------- UI helpers ---------- */
 let tt;
@@ -15,16 +17,16 @@ function toast(t) { const e = $("#toast"); e.textContent = t; e.classList.add("s
 function pill(t, c = "") { $("#pill").textContent = t; $("#pill").className = "pill " + c; }
 function show(id) {
   document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === id));
-  $("#hLogout").hidden = id !== "teacher";
+  $("#hLogout").hidden = !["teacher", "student"].includes(id);
 }
 function go(id) {
   if (id === "landing") { leave(); pill("READY"); }
   show(id);
 }
 function leave() {
-  speechSynthesis.cancel(); S.voiceOn = false;
+  if (TTS) speechSynthesis.cancel(); S.voiceOn = false;
   if (S.ch) sb.removeChannel(S.ch);
-  Object.assign(S, { ch: null, role: null, contest: null, people: [], matches: [], words: [], answers: [], events: [], me: null, key: null, cur: null });
+  Object.assign(S, { ch: null, role: null, contest: null, people: [], matches: [], words: [], answers: [], events: [], me: null, key: null, cur: null, pin: null, localDQ: false, warned: false, sent: null, reason: null, said: null });
 }
 const statusPill = () => { const s = S.contest?.status || "lobby"; pill(s.toUpperCase(), s === "finished" ? "off" : ""); };
 
@@ -33,7 +35,7 @@ function subscribe() {
   if (S.ch) sb.removeChannel(S.ch);
   const id = S.contest.id;
   let ch = sb.channel("contest-" + id);
-  ["contestants", "matches", "words", "answers", "security_events"].forEach(t =>
+  ["contestants", "matches", "words", "answers", "security_events", "match_secrets"].forEach(t =>
     ch = ch.on("postgres_changes", { event: "*", schema: "public", table: t, filter: `contest_id=eq.${id}` }, refresh));
   ch = ch.on("postgres_changes", { event: "*", schema: "public", table: "contests", filter: `id=eq.${id}` }, refresh);
   S.ch = ch.subscribe();
@@ -43,10 +45,17 @@ function refresh() { clearTimeout(rt); rt = setTimeout(doRefresh, 120); }
 async function doRefresh() {
   if (!S.contest) return;
   const id = S.contest.id, t = S.role === "teacher";
-  const q = tb => t || ["contestants", "matches"].includes(tb) ? sb.from(tb).select("*").eq("contest_id", id).order("created_at") : Promise.resolve({ data: [] });
-  const [k, p, m, w, a, e] = await Promise.all([sb.from("contests").select("*").eq("id", id).single(), q("contestants"), q("matches"), q("words"), q("answers"), q("security_events")]);
+  const q = tb => t || ["contestants", "matches"].includes(tb) || (tb === "match_secrets" && S.role === "student") ? sb.from(tb).select("*").eq("contest_id", id).order("created_at") : Promise.resolve({ data: [] });
+  const [k, p, m, w, a, e, sc, pk] = await Promise.all([sb.from("contests").select("*").eq("id", id).single(), q("contestants"), q("matches"), q("words"), q("answers"), q("security_events"), q("match_secrets"),
+    t ? sb.from("contest_keys").select("projector_pin").eq("contest_id", id).maybeSingle() : Promise.resolve({})]);
   if (!k.data) return;
   Object.assign(S, { contest: k.data, people: p.data || [], matches: m.data || [], words: w.data || [], answers: a.data || [], events: e.data || [] });
+  if (t) S.pin = pk.data?.projector_pin;
+  // The secret word/definition/example live in match_secrets; only the teacher, the two duelists, and a PIN-holding projector can read them.
+  let sec = sc.data || [];
+  if (S.role === "projector" && S.pin) sec = (await sb.rpc("projector_words", { p_code: S.contest.code, p_pin: S.pin })).data || [];
+  const by = new Map(sec.map(r => [r.match_id, r]));
+  S.matches.forEach(mm => { const r = by.get(mm.id); Object.assign(mm, r && r.attempt === mm.attempt ? { word: r.word, definition: r.definition, example: r.example } : { word: mm.revealed_word || null, definition: null, example: null }); });
   if (t) await reconcile();
   render();
 }
@@ -69,7 +78,7 @@ async function pickWord() {
   return w;
 }
 async function finish(m, w, l, dq) {
-  await sb.from("matches").update({ status: "done", winner: w, finished_at: new Date().toISOString() }).eq("id", m.id);
+  await sb.from("matches").update({ status: "done", winner: w, finished_at: new Date().toISOString(), revealed_word: m.word || null }).eq("id", m.id);
   m.status = "done"; m.winner = w;
   const W = S.people.find(p => p.id === w), L = S.people.find(p => p.id === l);
   if (W) { W.wins++; await sb.from("contestants").update({ wins: W.wins }).eq("id", w); }
@@ -94,12 +103,15 @@ async function reconcile() {
     for (const m of S.matches.filter(m => m.status === "live")) {           // auto-judging
       const a = S.answers.filter(x => x.match_id === m.id && x.attempt === m.attempt);
       const a1 = a.find(x => x.contestant_id === m.p1), a2 = a.find(x => x.contestant_id === m.p2);
-      if (!a1 || !a2) continue;
+      if (!a1 || !a2 || m.word == null) continue;
       const ok1 = norm(a1.answer) === norm(m.word), ok2 = norm(a2.answer) === norm(m.word);
       if (ok1 !== ok2) await finish(m, ok1 ? m.p1 : m.p2, ok1 ? m.p2 : m.p1);
       else {                                                                // tie → sudden-death word
         const w = await pickWord();
-        if (w) await sb.from("matches").update({ attempt: m.attempt + 1, word: w.word, definition: w.definition, example: w.example }).eq("id", m.id);
+        if (w) {
+          await sb.from("match_secrets").upsert({ match_id: m.id, contest_id: S.contest.id, attempt: m.attempt + 1, word: w.word, definition: w.definition, example: w.example });
+          await sb.from("matches").update({ attempt: m.attempt + 1, word_len: w.word.length }).eq("id", m.id);
+        }
       }
     }
     const open = S.matches.some(m => m.status !== "done"), act = S.people.filter(p => p.status === "active");
@@ -160,7 +172,8 @@ function renderTeacher() {
         .map(([l, n]) => `<div class="card stat"><b>${n}</b><span>${l}</span></div>`).join("")}</div>
       <div class="card row" style="margin-bottom:26px"><div><b>Number of students</b><br><small>${S.people.length} joined. An odd number gives one student a bye each round.</small></div>
       <div style="display:flex;gap:10px;align-items:center"><input id="capIn" type="number" min="2" max="500" value="${c.capacity}" style="width:110px;margin:0"><button class="btn ghost sm" data-act="setCap">Update</button></div></div>
-      <div class="card center"><p class="sub" style="margin-bottom:8px">Contest code</p><div class="code">${esc(c.code)}</div><br>
+      <div class="card center"><p class="sub" style="margin-bottom:8px">Contest code</p><div class="code">${esc(c.code)}</div>
+      <p class="sub" style="margin:10px 0 18px">Projector PIN: <b>${esc(S.pin || "…")}</b> (lets AI Master read the words on the projector)</p>
       <button class="btn ghost" data-act="copy">Copy code</button> <button class="btn" data-act="openProjector">Open projector</button></div>`;
   } else if (S.tab === "contestants") {
     body = `<h3>Contestants (${S.people.length}/${c.capacity})</h3><br><table><tr><th>#</th><th>Name</th><th>Student no.</th><th>Status</th><th>Wins</th><th>Losses</th></tr>
@@ -196,8 +209,9 @@ function pickVoice() {
   const v = speechSynthesis.getVoices().filter(x => /^en/i.test(x.lang));
   VOICE = v.find(x => /aria|jenny|zira|samantha|libby|sonia|hazel|susan|karen|moira|tessa|female|google us english/i.test(x.name)) || v[0] || null;
 }
-speechSynthesis.onvoiceschanged = pickVoice; pickVoice();
+if (TTS) { speechSynthesis.onvoiceschanged = pickVoice; pickVoice(); }
 function say(text) {
+  if (!TTS) return toast("This browser cannot read aloud.");
   if (!VOICE) pickVoice();
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
@@ -221,7 +235,7 @@ function renderStudent() {
   else if (me.status === "champion") h = `<div class="center"><div class="big">🏆</div><h2 class="title sm">You won the tournament</h2></div>`;
   else if (me.status === "eliminated") h = `<div class="center"><div class="big">👏</div><h2 class="title sm">You're out</h2><p class="sub">Two losses ends a run. Thanks for playing, ${esc(me.name)}.</p></div>`;
   else if (m) h = `<p class="sub" style="margin-bottom:18px">Round ${m.round} · versus <b>${opp(m)}</b></p>
-    <div class="wordcard"><button class="btn" data-act="speak">🔊 Hear AI Master</button><p>${esc(m.definition)}</p>${m.example ? `<p><em>“${esc(m.example)}”</em></p>` : ""}</div>
+    <div class="wordcard"><button class="btn" data-act="speak">🔊 Hear AI Master</button><p>${esc(m.definition)}</p><p class="sub" style="font-size:16px;margin:12px 0 0">The example sentence is spoken only. Listen carefully.</p></div>
     ${sent ? `<p class="sub">Answer sent. Waiting for your opponent…</p>` : `<input id="ans" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type the word" onpaste="return false"><button class="btn" data-act="submit">Submit answer</button>`}`;
   else h = `<div class="center"><div class="big">⏳</div><h2 class="title sm">You're in</h2><p class="sub">${esc(me.name)}<br>${next ? `Next: <b>${opp(next)}</b>. Waiting for the teacher to start your match.` : me.wins || me.losses ? "Waiting for the next round." : "Waiting for the teacher to start the contest."}</p></div>`;
   $("#student").innerHTML = h;
@@ -240,17 +254,17 @@ function violation(reason) {
 // keepalive lets the request finish even while the phone is sending the browser to the background;
 // if it still fails, the event is kept on the device and re-sent when the student returns.
 function reportEvent(ev) {
-  localStorage.sd_unsent = JSON.stringify(ev);
+  LS.set("sd_unsent", JSON.stringify(ev));
   if (!S.token) return;
   fetch(`${CFG.SUPABASE_URL}/rest/v1/security_events`, {
     method: "POST", keepalive: true,
     headers: { apikey: CFG.SUPABASE_ANON_KEY, Authorization: "Bearer " + S.token, "Content-Type": "application/json", Prefer: "return=minimal" },
     body: JSON.stringify(ev)
-  }).then(r => { if (r.ok) localStorage.removeItem("sd_unsent"); }).catch(() => { });
+  }).then(r => { if (r.ok) LS.del("sd_unsent"); }).catch(() => { });
 }
 function flush() {
-  const ev = JSON.parse(localStorage.sd_unsent || "null"); if (!ev) return;
-  sb.from("security_events").insert(ev).then(({ error }) => { if (!error) localStorage.removeItem("sd_unsent"); });
+  const ev = JSON.parse(LS.get("sd_unsent") || "null"); if (!ev) return;
+  sb.from("security_events").insert(ev).then(({ error }) => { if (!error) LS.del("sd_unsent"); });
 }
 window.addEventListener("online", flush);
 document.addEventListener("visibilitychange", () => { if (document.hidden) violation("The contest tab was hidden."); else flush(); });
@@ -265,8 +279,8 @@ function renderProjector() {
   const vs = m => `<div class="vs">${esc(nm(m.p1))}<em>vs</em>${esc(nm(m.p2))}</div>`;
   let stage;
   if (champ) stage = `<div class="big">🏆</div><div class="vs">${esc(champ.name)}</div><p class="sub">Tournament champion</p>`;
-  else if (live) stage = `<p class="sub">Round ${live.round} · Listen to AI Master and spell</p>${vs(live)}<div class="mask">${"_ ".repeat(live.word.length).trim()}</div><p class="sub" style="margin-top:20px">${live.word.length} letters · attempt ${live.attempt}</p>`;
-  else if (done && (!pend || S.matches.length)) stage = `<p class="sub">Last result</p>${vs(done)}<p class="sub" style="margin-top:20px"><b>${esc(nm(done.winner))}</b> advances · the word was <b>${esc(done.word)}</b></p>`;
+  else if (live) stage = `<p class="sub">Round ${live.round} · Listen to AI Master and spell</p>${vs(live)}<div class="mask">${"_ ".repeat(live.word_len || 0).trim()}</div><p class="sub" style="margin-top:20px">${live.word_len || 0} letters · attempt ${live.attempt}</p>`;
+  else if (done && (!pend || S.matches.length)) stage = `<p class="sub">Last result</p>${vs(done)}<p class="sub" style="margin-top:20px"><b>${esc(nm(done.winner))}</b> advances · the word was <b>${esc(done.revealed_word)}</b></p>`;
   else if (pend) stage = `<p class="sub">Up next</p>${vs(pend)}`;
   else stage = `<p class="sub">Join with the code above</p><div class="chips">${S.people.map(p => `<span class="chip">${esc(p.name)}</span>`).join("") || "<span class='empty'>Waiting for contestants…</span>"}</div><p class="sub" style="margin-top:20px">${S.people.length} of ${c.capacity} joined</p>`;
   const alive = S.people.filter(p => p.status === "active").length;
@@ -274,12 +288,12 @@ function renderProjector() {
     <div class="center"><span class="sub" style="margin:0">Contest code</span><div class="code">${esc(c.code)}</div></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn ${S.voiceOn ? "ok" : "ghost"}" data-act="voice">${S.voiceOn ? "🔊 AI Master is on" : "🔊 Enable AI Master voice"}</button>${S.voiceOn ? '<button class="btn ghost" data-act="repeat">Repeat</button>' : ""}<button class="btn ghost" data-act="full">Fullscreen (F)</button></div></div>
     <div class="stage">${stage}</div>${bracketHtml()}`;
-  if (S.voiceOn && live) { const k = live.id + ":" + live.attempt; if (S.said !== k) { S.said = k; say(script(live)); } }
+  if (S.voiceOn && live && live.word) { const k = live.id + ":" + live.attempt; if (S.said !== k) { S.said = k; say(script(live)); } }
 }
-async function openProjector(code) {
+async function openProjector(code, pin = "") {
   const { data } = await sb.from("contests").select("*").eq("code", code.toUpperCase()).maybeSingle();
   if (!data) return toast("No contest found for that code.");
-  leave(); S.role = "projector"; S.contest = data;
+  leave(); S.role = "projector"; S.contest = data; S.pin = pin.trim().toUpperCase();
   pill("LIVE"); show("projector"); subscribe(); doRefresh();
 }
 
@@ -323,7 +337,14 @@ const act = {
     if (data.user.is_anonymous) return toast("This is not a teacher account.");
     loadTeacherContest();
   },
-  async logout() { await sb.auth.signOut(); go("landing"); },
+  async logout() {
+    if (S.role === "student" && !S.armed) {          // two taps, no popup (a popup would count as leaving the screen)
+      S.armed = true; setTimeout(() => S.armed = false, 4000);
+      return toast("Tap Log out again to confirm. You may not be able to rejoin once the contest has started.");
+    }
+    S.armed = false; LS.del("sd_me"); LS.del("sd_unsent");
+    await sb.auth.signOut(); go("landing");
+  },
   async join() {
     const code = val("sCode").toUpperCase(), name = val("sName");
     if (!code || !name) return toast("Enter the contest code and your name.");
@@ -337,10 +358,10 @@ const act = {
       if (!r.data) return toast(c.status !== "lobby" ? "This contest has already started." : "The contest is full.");
       p = r.data;
     }
-    localStorage.sd_me = JSON.stringify({ contest: c.id, id: p.id });
+    LS.set("sd_me", JSON.stringify({ contest: c.id, id: p.id }));
     leave(); Object.assign(S, { role: "student", contest: c, me: p.id }); show("student"); subscribe(); doRefresh();
   },
-  projector() { openProjector(val("pCode")); },
+  projector() { openProjector(val("pCode"), val("pPin")); },
   tab(d) { S.tab = d.id; S.creating = false; renderTeacher(); },
   newContest() { S.creating = true; renderTeacher(); },
   cancelNew() { S.creating = false; renderTeacher(); },
@@ -350,6 +371,7 @@ const act = {
     if (!cap || cap < 2) return toast("Enter the number of students (at least 2).");
     const { data, error } = await sb.from("contests").insert({ name, code: genCode(), capacity: cap, security_mode: $("#cSec").value }).select().single();
     if (error) return toast("Could not create contest: " + error.message);
+    await sb.from("contest_keys").insert({ contest_id: data.id });
     S.creating = false; S.tab = "overview"; S.contest = data; S.people = []; S.matches = []; S.words = []; S.answers = []; S.events = [];
     subscribe(); doRefresh(); toast("Contest created.");
   },
@@ -361,7 +383,7 @@ const act = {
     toast("Number of students updated."); doRefresh();
   },
   copy() { navigator.clipboard.writeText(S.contest.code); toast("Code copied."); },
-  openProjector() { window.open(`${location.pathname}?projector=${S.contest.code}`, "_blank"); },
+  openProjector() { window.open(`${location.pathname}?projector=${S.contest.code}&pin=${S.pin || ""}`, "_blank"); },
   async addWords() {
     const lines = val("wBulk").split("\n").flatMap(l => l.includes("|") ? [l] : l.split(","));
     const items = lines.map(x => x.trim()).filter(Boolean);
@@ -403,17 +425,21 @@ const act = {
   nextRound,
   async start(d) {
     const w = await pickWord(); if (!w) return;
-    await sb.from("matches").update({ status: "live", attempt: 1, word: w.word, definition: w.definition, example: w.example }).eq("id", d.id);
+    const { error } = await sb.from("match_secrets").upsert({ match_id: d.id, contest_id: S.contest.id, attempt: 1, word: w.word, definition: w.definition, example: w.example });
+    if (error) return toast(error.message);
+    await sb.from("matches").update({ status: "live", attempt: 1, word_len: w.word.length }).eq("id", d.id);
   },
   async force(d) { const m = S.matches.find(x => x.id === d.id), w = m[d.w]; await finish(m, w, d.w === "p1" ? m.p2 : m.p1); refresh(); },
   speak,
   voice() {
+    if (!TTS) return toast("This browser cannot read aloud.");
     S.voiceOn = !S.voiceOn; S.said = null;
     if (!S.voiceOn) speechSynthesis.cancel();
     else if (!S.matches.some(m => m.status === "live")) say("Hello, I am AI Master. I will read the words for you.");
+    if (S.voiceOn && !S.pin) toast("Enter the projector PIN (shown on the teacher Overview) so AI Master can read the words.");
     renderProjector();
   },
-  repeat() { const l = S.matches.find(m => m.status === "live"); if (l) say(script(l)); },
+  repeat() { const l = S.matches.find(m => m.status === "live"); if (l?.word) say(script(l)); },
   sayMatch(d) { const m = S.matches.find(x => x.id === d.id); if (m) say(script(m)); },
   sayWord(d) { const w = S.words.find(x => x.id === d.id); if (w) say(script(w)); },
   async submit() {
@@ -438,10 +464,10 @@ setInterval(() => S.contest && doRefresh(), 8000);   // safety net if a realtime
 (async () => {
   if (CFG.SUPABASE_URL.includes("YOUR-PROJECT")) return toast("Add your Supabase URL and anon key to config.js.");
   const code = new URLSearchParams(location.search).get("projector");
-  if (code) return openProjector(code);
+  if (code) return openProjector(code, new URLSearchParams(location.search).get("pin") || "");
   const { data: { session } } = await sb.auth.getSession();
   if (session && !session.user.is_anonymous) return loadTeacherContest();
-  const me = JSON.parse(localStorage.sd_me || "null");
+  const me = JSON.parse(LS.get("sd_me") || "null");
   if (session && me) {
     const { data: c } = await sb.from("contests").select("*").eq("id", me.contest).maybeSingle();
     if (c) { Object.assign(S, { role: "student", contest: c, me: me.id }); show("student"); subscribe(); doRefresh(); flush(); }

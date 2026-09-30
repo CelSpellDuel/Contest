@@ -10,6 +10,8 @@ Static site (HTML/CSS/JS) + Supabase. No build step.
 4. Put your Project URL and anon key in `config.js`.
 5. **GitHub:** push the folder, then Settings → Pages → deploy from `main` / root.
 
+**Upgrading an existing project?** Run `migration.sql` once in the SQL Editor *before* deploying the new files. It moves each duel's secret word out of the public `matches` table.
+
 ## Using it
 - **Teacher:** sign in, create a contest, add words (just type the word; the definition and example fill in automatically), share the code.
 - **Students:** Student → enter code and name.
@@ -26,5 +28,5 @@ Static site (HTML/CSS/JS) + Supabase. No build step.
 
 Paid alternative: add `ANTHROPIC_API_KEY` instead. If both exist, Gemini is used.
 
-Projector: press **Enable AI Master voice** once (browsers need a click). She then reads every new duel aloud.
+Projector: enter the contest code **and the Projector PIN** (shown on the teacher Overview; the "Open projector" button fills both in). Then press **Enable AI Master voice** once (browsers need a click). She then reads every new duel aloud.
 If AI Master is unavailable, the app falls back to a free dictionary.
