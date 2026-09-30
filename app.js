@@ -10,7 +10,7 @@ const nm = id => S.people.find(p => p.id === id)?.name;
 
 /* ---------- UI helpers ---------- */
 let tt;
-function toast(t) { const e = $("#toast"); e.textContent = t; e.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => e.classList.remove("show"), 2800); }
+function toast(t) { const e = $("#toast"); e.textContent = t; e.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => e.classList.remove("show"), Math.max(2800, t.length * 70)); }
 function pill(t, c = "") { $("#pill").textContent = t; $("#pill").className = "pill " + c; }
 function show(id) {
   document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === id));
@@ -289,7 +289,11 @@ async function askMaster(words) {
   const out = {};
   for (let i = 0; i < words.length; i += 25) {
     const { data, error } = await sb.functions.invoke("ai-master", { body: { words: words.slice(i, i + 25) } });
-    if (error || !data?.results) { S.aiDown = true; continue; }
+    if (error || !data?.results) {
+      S.aiDown = true;
+      try { S.aiErr = (await error.context.json()).error; } catch { S.aiErr = error?.message || data?.error || "no reply"; }
+      continue;
+    }
     data.results.forEach(r => { if (r.definition) out[norm(r.word)] = r; });
   }
   return out;
@@ -368,7 +372,7 @@ const act = {
       if (error) return toast(error.message);
       $("#wBulk").value = "";
     }
-    toast([`${rows.length} word(s) added.`, S.aiDown && "AI Master is unavailable, so the dictionary was used.", nf.length && `No dictionary entry: ${nf.join(", ")}.`, noEx.length && `No example sentence: ${noEx.join(", ")} (use Edit).`].filter(Boolean).join(" "));
+    toast([`${rows.length} word(s) added.`, S.aiDown && `AI Master is unavailable (${S.aiErr}), so the dictionary was used.`, nf.length && `No dictionary entry: ${nf.join(", ")}.`, noEx.length && `No example sentence: ${noEx.join(", ")} (use Edit).`].filter(Boolean).join(" "));
     doRefresh();
   },
   async editWord(d) {
