@@ -46,7 +46,15 @@ async function doRefresh() {
   if (!S.contest) return;
   const id = S.contest.id, t = S.role === "teacher";
   const q = tb => t || ["contestants", "matches"].includes(tb) || (tb === "match_secrets" && S.role === "student") ? sb.from(tb).select("*").eq("contest_id", id).order("created_at") : Promise.resolve({ data: [] });
-  const [k, p, m, w, a, e, sc] = await Promise.all([sb.from("contests").select("*").eq("id", id).single(), q("contestants"), q("matches"), q("words"), q("answers"), q("security_events"), q("match_secrets")]);
+  // Students get their secret word through a database function (my_live_secrets); it does not depend on table policies.
+  const secQ = async () => {
+    if (S.role !== "student") return q("match_secrets");
+    const r = await sb.rpc("my_live_secrets", { cid: id });
+    if (!r.error) { S.secErr = null; return r; }
+    S.secErr = r.error.message;
+    return sb.from("match_secrets").select("*").eq("contest_id", id);
+  };
+  const [k, p, m, w, a, e, sc] = await Promise.all([sb.from("contests").select("*").eq("id", id).single(), q("contestants"), q("matches"), q("words"), q("answers"), q("security_events"), secQ()]);
   if (!k.data) return;
   Object.assign(S, { contest: k.data, people: p.data || [], matches: m.data || [], words: w.data || [], answers: a.data || [], events: e.data || [] });
   // The secret word/definition/example live in match_secrets; only the teacher and the two duelists can read them.
@@ -277,7 +285,10 @@ const script = m => {
 };
 function speak() {
   const m = S.cur; if (!m) return;
-  if (!m.word || !m.definition) { toast("AI Master is still getting your word. Try again in a moment."); refresh(); return; }
+  if (!m.word || !m.definition) {
+    toast(S.secErr ? "Could not load your word: " + S.secErr + " (the teacher must run the SQL fix in Supabase)." : "AI Master is still getting your word. Try again in a moment.");
+    refresh(); return;
+  }
   say(script(m));
 }
 function renderStudent() {
