@@ -24,9 +24,9 @@ function go(id) {
   show(id);
 }
 function leave() {
-  if (TTS) speechSynthesis.cancel(); S.voiceOn = false;
+  if (TTS) speechSynthesis.cancel();
   if (S.ch) sb.removeChannel(S.ch);
-  Object.assign(S, { ch: null, role: null, contest: null, people: [], matches: [], words: [], answers: [], events: [], me: null, key: null, cur: null, localDQ: false, warned: false, sent: null, reason: null, said: null });
+  Object.assign(S, { ch: null, role: null, contest: null, people: [], matches: [], words: [], answers: [], events: [], me: null, key: null, cur: null, localDQ: false, warned: false, sent: null, reason: null });
 }
 const statusPill = () => { const s = S.contest?.status || "lobby"; pill(s.toUpperCase(), s === "finished" ? "off" : ""); };
 
@@ -59,19 +59,37 @@ async function doRefresh() {
 function render() {
   if (!S.contest) return;
   statusPill();
-  if (S.role === "teacher") { renderTeacher(); autoSpeak(); }
+  if (S.role === "teacher") renderTeacher();
   else if (S.role === "student") renderStudent();
 }
 
 /* ---------- teacher: judging + bracket engine ---------- */
+const shuffle = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+// One random word for a single duel (sudden-death tie-breaks). Avoids words currently live in other duels.
 async function pickWord() {
   if (!S.words.length) { toast("Add words to the word bank first."); return null; }
-  let pool = S.words.filter(w => !w.used);
-  if (!pool.length) { await sb.from("words").update({ used: false }).eq("contest_id", S.contest.id); S.words.forEach(w => w.used = false); pool = S.words; }
+  const live = new Set(S.matches.filter(m => m.status === "live").map(m => norm(m.word)));
+  let pool = S.words.filter(w => !w.used && !live.has(norm(w.word)));
+  if (!pool.length) { await sb.from("words").update({ used: false }).eq("contest_id", S.contest.id); S.words.forEach(w => w.used = false); pool = S.words.filter(w => !live.has(norm(w.word))); }
+  if (!pool.length) pool = S.words;
   const w = pool[Math.floor(Math.random() * pool.length)];
   w.used = true;
   await sb.from("words").update({ used: true }).eq("id", w.id);
   return w;
+}
+// n different random words, one per pair, so no two duels in a round get the same word.
+async function pickWords(n) {
+  if (S.words.length < n) { toast(`Add at least ${n} words to the word bank (one per pair).`); return null; }
+  let chosen = shuffle(S.words.filter(w => !w.used)).slice(0, n);
+  if (chosen.length < n) {                                                   // bank ran out: start a new cycle
+    const ids = new Set(chosen.map(w => w.id));
+    await sb.from("words").update({ used: false }).eq("contest_id", S.contest.id);
+    S.words.forEach(w => w.used = false);
+    chosen = chosen.concat(shuffle(S.words.filter(w => !ids.has(w.id))).slice(0, n - chosen.length));
+  }
+  await sb.from("words").update({ used: true }).in("id", chosen.map(w => w.id));
+  chosen.forEach(w => w.used = true);
+  return chosen;
 }
 async function finish(m, w, l, dq) {
   await sb.from("matches").update({ status: "done", winner: w, finished_at: new Date().toISOString(), revealed_word: m.word || null }).eq("id", m.id);
@@ -118,37 +136,58 @@ async function reconcile() {
   } finally { S.busy = false; }
 }
 async function nextRound() {
-  const act = S.people.filter(p => p.status === "active");
   if (S.matches.some(m => m.status !== "done")) return toast("Finish the current matches first.");
+  const act = S.people.filter(p => p.status === "active");
   if (act.length < 2) return toast("Need at least 2 active contestants.");
-  const round = Math.max(0, ...S.matches.map(m => m.round)) + 1;
-  const rows = [];
-  if (act.length % 2) {                                                        // odd number → one bye
-    const had = new Set(S.matches.filter(m => !m.p2).map(m => m.p1));
-    const pool = act.filter(p => !had.has(p.id));                              // nobody gets a second bye first
-    const b = (pool.length ? pool : act)[Math.floor(Math.random() * (pool.length || act.length))];
-    act.splice(act.indexOf(b), 1);
-    rows.push({ contest_id: S.contest.id, round, p1: b.id, p2: null, status: "done", winner: b.id });
-  }
-  act.sort(() => Math.random() - .5).sort((a, b) => a.losses - b.losses);     // same-loss players meet first
-  for (let i = 0; i < act.length; i += 2)
-    rows.push({ contest_id: S.contest.id, round, p1: act[i].id, p2: act[i + 1].id, status: "pending" });
+  const round = Math.max(0, ...S.matches.map(m => m.round)) + 1, cid = S.contest.id, rows = [];
+  const had = new Set(S.matches.filter(m => !m.p2).map(m => m.p1));
+  const upper = act.filter(p => p.losses === 0), lower = act.filter(p => p.losses === 1);
+  const pair = (grp, bracket) => {
+    grp = shuffle(grp.slice());
+    if (grp.length % 2) {                                                      // odd group → one bye (nobody gets a second one first)
+      const pool = grp.filter(p => !had.has(p.id)), b = (pool.length ? pool : grp)[Math.floor(Math.random() * (pool.length || grp.length))];
+      grp.splice(grp.indexOf(b), 1); had.add(b.id);
+      rows.push({ contest_id: cid, round, p1: b.id, p2: null, status: "done", winner: b.id, bracket });
+    }
+    for (let i = 0; i < grp.length; i += 2) rows.push({ contest_id: cid, round, p1: grp[i].id, p2: grp[i + 1].id, status: "pending", bracket });
+  };
+  if (upper.length === 1 && lower.length === 1) rows.push({ contest_id: cid, round, p1: upper[0].id, p2: lower[0].id, status: "pending", bracket: "final" });   // upper champion vs lower champion
+  else { pair(upper, "upper"); pair(lower, "lower"); }
   const { error } = await sb.from("matches").insert(rows);
   if (error) return toast("Could not create round: " + error.message);
-  await sb.from("contests").update({ status: "live" }).eq("id", S.contest.id);
-  toast(`Round ${round} ready.`);
+  await sb.from("contests").update({ status: "live" }).eq("id", cid);
+  toast(`Round ${round} ready. Press "Start all duels".`);
+}
+async function startAll() {
+  const pend = S.matches.filter(m => m.status === "pending" && m.p2);
+  if (!pend.length) return toast("There are no pending duels to start.");
+  const ws = await pickWords(pend.length); if (!ws) return;
+  // 1) write every secret word first, 2) flip every duel to live in parallel, so all pairs begin together
+  const { error } = await sb.from("match_secrets").upsert(pend.map((m, i) => ({ match_id: m.id, contest_id: S.contest.id, attempt: 1, word: ws[i].word, definition: ws[i].definition, example: ws[i].example })));
+  if (error) return toast(error.message);
+  const res = await Promise.all(pend.map((m, i) => sb.from("matches").update({ status: "live", attempt: 1, word_len: ws[i].word.length }).eq("id", m.id)));
+  const bad = res.find(r => r.error);
+  toast(bad ? bad.error.message : `${pend.length} duel${pend.length > 1 ? "s" : ""} started at the same time.`);
 }
 
 /* ---------- teacher UI ---------- */
-function bracketHtml() {
-  const rounds = [...new Set(S.matches.map(m => m.round))].sort((a, b) => a - b);
-  if (!rounds.length) return `<p class="empty">The bracket appears once round 1 starts.</p>`;
+function bracketHtml(list = S.matches, empty = "Nothing here yet.") {
+  const rounds = [...new Set(list.map(m => m.round))].sort((a, b) => a - b);
+  if (!rounds.length) return `<p class="empty">${empty}</p>`;
   const line = (m, k) => {
     const id = m[k], cls = m.status === "done" && id ? (m.winner === id ? "win" : "lose") : "";
     return `<div class="pl ${cls}">${esc(id ? nm(id) : "Bye")}</div>`;
   };
-  return `<div class="bracket">${rounds.map(r => `<div class="col"><h4>Round ${r}</h4>${S.matches.filter(m => m.round === r).map(m =>
-    `<div class="mbox ${m.status}">${line(m, "p1")}${line(m, "p2")}</div>`).join("")}</div>`).join("")}</div>`;
+  return `<div class="bracket">${rounds.map(r => `<div class="col"><h4>Round ${r}</h4>${list.filter(m => m.round === r).map(m =>
+    `<div class="mbox ${m.status}">${m.status === "live" ? '<div class="lvb">● LIVE</div>' : ""}${line(m, "p1")}${line(m, "p2")}</div>`).join("")}</div>`).join("")}</div>`;
+}
+function bracketsHtml() {
+  const by = b => S.matches.filter(m => (m.bracket || "upper") === b);
+  const sec = (t, cls, list, empty) => `<div class="bsec ${cls}"><h3>${t}</h3>${bracketHtml(list, empty)}</div>`;
+  const fin = by("final");
+  return sec("Upper bracket", "up", by("upper"), "The upper bracket appears once round 1 starts. Everyone begins here.") +
+    sec("Lower bracket", "low", by("lower"), "Players who lose once drop down to the lower bracket.") +
+    (fin.length ? sec("Grand final", "fin", fin, "") : "");
 }
 function renderTeacher() {
   const ae = document.activeElement;
@@ -182,15 +221,15 @@ function renderTeacher() {
       <table><tr><th>Word</th><th>Definition</th><th>Example</th><th></th></tr>${S.words.map(w =>
         `<tr><td><b>${esc(w.word)}</b> ${w.used ? '<span class="tag">used</span>' : ""}</td><td>${esc(w.definition)}</td><td>${w.example ? esc(w.example) : '<span class="tag disqualified">no example</span>'}</td><td><button class="btn ghost sm" data-act="sayWord" data-id="${w.id}">🔊</button> <button class="btn ghost sm" data-act="editWord" data-id="${w.id}">Edit</button> <button class="btn ghost sm" data-act="delWord" data-id="${w.id}">Delete</button></td></tr>`).join("")}</table>`;
   } else if (S.tab === "matches") {
-    const last = Math.max(0, ...S.matches.map(m => m.round)), cur = S.matches.filter(m => m.round === last && m.p2);
-    body = `<div class="row"><h3>${last ? "Round " + last : "Matches"}</h3><button class="btn" data-act="nextRound">${last ? "Start next round" : "Start round 1"}</button></div>
+    const last = Math.max(0, ...S.matches.map(m => m.round)), cur = S.matches.filter(m => m.round === last && m.p2), pending = cur.some(m => m.status === "pending");
+    body = `<div class="row"><h3>${last ? "Round " + last : "Matches"}</h3><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn ${pending ? "ghost" : ""}" data-act="nextRound">${last ? "Start next round" : "Start round 1"}</button>${pending ? '<button class="btn ok" data-act="startAll">Start all duels ▶</button>' : ""}</div></div>
       ${cur.map(m => {
         const got = S.answers.filter(a => a.match_id === m.id && a.attempt === m.attempt).length;
-        return `<div class="card row"><div><b>${esc(nm(m.p1))}</b> vs <b>${esc(nm(m.p2))}</b> <span class="tag ${m.status}">${m.status}</span>
+        return `<div class="card row"><div><b>${esc(nm(m.p1))}</b> vs <b>${esc(nm(m.p2))}</b> <span class="tag ${m.status}">${m.status}</span> <span class="tag">${m.bracket || "upper"}</span>
         ${m.status === "live" ? `<br><small>Word: <b>${esc(m.word)}</b> · attempt ${m.attempt} · ${got}/2 answers</small>` : ""}</div>
-        <div>${m.status === "live" ? `<button class="btn ok sm" data-act="sayMatch" data-id="${m.id}">🔊 Read aloud</button> ` : ""}${m.status === "pending" ? `<button class="btn ok sm" data-act="start" data-id="${m.id}">Start</button>` : ""}
+        <div>
         ${m.status !== "done" ? `<button class="btn ghost sm" data-act="force" data-id="${m.id}" data-w="p1">${esc(nm(m.p1))} wins</button> <button class="btn ghost sm" data-act="force" data-id="${m.id}" data-w="p2">${esc(nm(m.p2))} wins</button>` : ""}</div></div>`;
-      }).join("")}<br>${bracketHtml()}`;
+      }).join("")}<br>${bracketsHtml()}`;
   } else if (S.tab === "projector") {
     body = projectorHtml();
   } else {
@@ -233,7 +272,7 @@ function renderStudent() {
   else if (me.status === "champion") h = `<div class="center"><div class="big">🏆</div><h2 class="title sm">You won the tournament</h2></div>`;
   else if (me.status === "eliminated") h = `<div class="center"><div class="big">👏</div><h2 class="title sm">You're out</h2><p class="sub">Two losses ends a run. Thanks for playing, ${esc(me.name)}.</p></div>`;
   else if (m) h = `<p class="sub" style="margin-bottom:18px">Round ${m.round} · versus <b>${opp(m)}</b></p>
-    <div class="wordcard"><button class="btn" data-act="speak">🔊 Hear AI Master</button><p>${esc(m.definition)}</p><p class="sub" style="font-size:16px;margin:12px 0 0">The example sentence is spoken only. Listen carefully.</p></div>
+    <div class="wordcard"><button class="btn" data-act="speak">🔊 AI Master</button><p>${esc(m.definition)}</p><p class="sub" style="font-size:16px;margin:12px 0 0">Press AI Master to hear the word, its definition and a sentence. You can press it again to repeat.</p></div>
     ${sent ? `<p class="sub">Answer sent. Waiting for your opponent…</p>` : `<input id="ans" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type the word" onpaste="return false"><button class="btn" data-act="submit">Submit answer</button>`}`;
   else h = `<div class="center"><div class="big">⏳</div><h2 class="title sm">You're in</h2><p class="sub">${esc(me.name)}<br>${next ? `Next: <b>${opp(next)}</b>. Waiting for the teacher to start your match.` : me.wins || me.losses ? "Waiting for the next round." : "Waiting for the teacher to start the contest."}</p></div>`;
   $("#student").innerHTML = h;
@@ -268,28 +307,13 @@ window.addEventListener("online", flush);
 document.addEventListener("visibilitychange", () => { if (document.hidden) violation("The contest tab was hidden."); else flush(); });
 window.addEventListener("blur", () => setTimeout(() => !document.hasFocus() && violation("The contest window lost focus."), 400));
 
-/* ---------- projector UI ---------- */
+/* ---------- projector UI (brackets only: no words, no voice) ---------- */
 function projectorHtml() {
-  const c = S.contest, live = S.matches.find(m => m.status === "live");
-  const done = S.matches.filter(m => m.status === "done" && m.p2).sort((a, b) => (b.finished_at || "").localeCompare(a.finished_at || ""))[0];
-  const pend = S.matches.find(m => m.status === "pending");
-  const champ = S.people.find(p => p.status === "champion");
-  const vs = m => `<div class="vs">${esc(nm(m.p1))}<em>vs</em>${esc(nm(m.p2))}</div>`;
-  let stage;
-  if (champ) stage = `<div class="big">🏆</div><div class="vs">${esc(champ.name)}</div><p class="sub">Tournament champion</p>`;
-  else if (live) stage = `<p class="sub">Round ${live.round} · Listen to AI Master and spell</p>${vs(live)}<div class="mask">${"_ ".repeat(live.word_len || 0).trim()}</div><p class="sub" style="margin-top:20px">${live.word_len || 0} letters · attempt ${live.attempt}</p>`;
-  else if (done && (!pend || S.matches.length)) stage = `<p class="sub">Last result</p>${vs(done)}<p class="sub" style="margin-top:20px"><b>${esc(nm(done.winner))}</b> advances · the word was <b>${esc(done.revealed_word)}</b></p>`;
-  else if (pend) stage = `<p class="sub">Up next</p>${vs(pend)}`;
-  else stage = `<p class="sub">Join with the code above</p><div class="chips">${S.people.map(p => `<span class="chip">${esc(p.name)}</span>`).join("") || "<span class='empty'>Waiting for contestants…</span>"}</div><p class="sub" style="margin-top:20px">${S.people.length} of ${c.capacity} joined</p>`;
+  const c = S.contest, champ = S.people.find(p => p.status === "champion");
   const alive = S.people.filter(p => p.status === "active").length;
-  return `<div class="proj"><div class="ph"><div><h3 style="font-size:40px">${esc(c.name)}</h3><span class="sub" style="margin:0">${alive} in the running</span></div>
+  return `<div class="proj"><div class="ph"><div><h3 style="font-size:40px">${esc(c.name)}</h3><span class="sub" style="margin:0">${champ ? "🏆 Champion: " + esc(champ.name) : alive + " in the running"}</span></div>
     <div class="center"><span class="sub" style="margin:0">Contest code</span><div class="code">${esc(c.code)}</div></div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn ${S.voiceOn ? "ok" : "ghost"}" data-act="voice">${S.voiceOn ? "🔊 AI Master is on" : "🔊 Enable AI Master voice"}</button>${S.voiceOn ? '<button class="btn ghost" data-act="repeat">Repeat</button>' : ""}<button class="btn ghost" data-act="full">Fullscreen (F)</button></div></div>
-    <div class="stage">${stage}</div>${bracketHtml()}</div>`;
-}
-function autoSpeak() {
-  const live = S.matches.find(m => m.status === "live");
-  if (S.voiceOn && S.tab === "projector" && live && live.word) { const k = live.id + ":" + live.attempt; if (S.said !== k) { S.said = k; say(script(live)); } }
+    <button class="btn ghost" data-act="full">Fullscreen (F)</button></div>${bracketsHtml()}</div>`;
 }
 
 /* ---------- actions ---------- */
@@ -415,23 +439,9 @@ const act = {
   },
   async delWord(d) { await sb.from("words").delete().eq("id", d.id); },
   nextRound,
-  async start(d) {
-    const w = await pickWord(); if (!w) return;
-    const { error } = await sb.from("match_secrets").upsert({ match_id: d.id, contest_id: S.contest.id, attempt: 1, word: w.word, definition: w.definition, example: w.example });
-    if (error) return toast(error.message);
-    await sb.from("matches").update({ status: "live", attempt: 1, word_len: w.word.length }).eq("id", d.id);
-  },
+  startAll,
   async force(d) { const m = S.matches.find(x => x.id === d.id), w = m[d.w]; await finish(m, w, d.w === "p1" ? m.p2 : m.p1); refresh(); },
   speak,
-  voice() {
-    if (!TTS) return toast("This browser cannot read aloud.");
-    S.voiceOn = !S.voiceOn; S.said = null;
-    if (!S.voiceOn) speechSynthesis.cancel();
-    else if (!S.matches.some(m => m.status === "live")) say("Hello, I am AI Master. I will read the words for you.");
-    renderTeacher(); autoSpeak();
-  },
-  repeat() { const l = S.matches.find(m => m.status === "live"); if (l?.word) say(script(l)); },
-  sayMatch(d) { const m = S.matches.find(x => x.id === d.id); if (m) say(script(m)); },
   sayWord(d) { const w = S.words.find(x => x.id === d.id); if (w) say(script(w)); },
   async submit() {
     const v = val("ans"), m = S.cur; if (!v || !m) return toast("Type your answer first.");

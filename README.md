@@ -10,13 +10,13 @@ Static site (HTML/CSS/JS) + Supabase. No build step.
 4. Put your Project URL and anon key in `config.js`.
 5. **GitHub:** push the folder, then Settings → Pages → deploy from `main` / root.
 
-**Upgrading an existing project?** Run `migration.sql` once in the SQL Editor *before* deploying the new files. It moves each duel's secret word out of the public `matches` table.
+**Upgrading an existing project?** Run `migration.sql` once in the SQL Editor *before* deploying the new files. It moves each duel's secret word out of the public `matches` table. If you already ran an earlier migration, run just this one line instead: `alter table matches add column if not exists bracket text not null default 'upper';`
 
 ## Using it
 - **Teacher:** sign in, create a contest, add words (just type the word; the definition and example fill in automatically), share the code.
 - **Students:** Student → enter code and name.
-- **Projector:** teacher → **Projector** tab (next to Overview, Contestants, Word bank, Matches, Security). Press **F** or the Fullscreen button, then drag that window to the big screen.
-- Start round 1, then press **Start** on each match. Answers are judged automatically; a tie (both right or both wrong) gets a new word.
+- **Projector:** teacher → **Projector** tab. It shows only the **upper bracket** (nobody has lost yet), the **lower bracket** (one loss) and the **grand final**, with no words and no voice. Press **F** or the Fullscreen button and drag the window to the big screen.
+- Start round 1, then press **Start all duels**: every pair begins at the same moment, each with its own random word. Answers are judged automatically; a tie (both right or both wrong) gets a new word.
 - Keep the teacher tab open during the contest: it does the judging and advances the bracket.
 
 ## AI Master (definitions + example sentences)
@@ -28,5 +28,5 @@ Static site (HTML/CSS/JS) + Supabase. No build step.
 
 Paid alternative: add `ANTHROPIC_API_KEY` instead. If both exist, Gemini is used.
 
-On the teacher **Projector** tab, press **Enable AI Master voice** once (browsers need a click). She then reads every new duel aloud. The secret word is never shown on screen, only its letter count.
-If AI Master is unavailable, the app falls back to a free dictionary.
+**Students** use AI Master: during a duel each student presses the **🔊 AI Master** button on their own device and hears the word, its definition and an example sentence. The projector does not read anything aloud.
+If AI Master is unavailable when adding words, the app falls back to a free dictionary.

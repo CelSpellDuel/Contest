@@ -36,6 +36,7 @@ create table matches (
   p1 uuid references contestants on delete cascade,
   p2 uuid references contestants on delete cascade,   -- null = bye
   status text not null default 'pending',             -- pending | live | done
+  bracket text not null default 'upper',              -- upper | lower | final
   word_len int, revealed_word text,                   -- the secret word itself is in match_secrets
   attempt int not null default 1,
   winner uuid,

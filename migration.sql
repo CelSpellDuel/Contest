@@ -21,3 +21,6 @@ alter publication supabase_realtime add table match_secrets;
 -- Projector PIN removed: safe to run even if you applied an earlier version of this migration.
 drop function if exists projector_words(text, text);
 drop table if exists contest_keys;
+
+-- Upper / lower bracket support (safe to run on any version).
+alter table matches add column if not exists bracket text not null default 'upper';

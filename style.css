@@ -128,3 +128,8 @@ svg,img{max-width:100%}
 .proj{padding:0}
 #teacher:fullscreen{background:var(--bg);padding:44px 56px;overflow:auto}
 #teacher:fullscreen .tabs{display:none}
+.bsec{border:1px solid var(--line);border-radius:30px;padding:26px 28px;margin-bottom:26px}
+.bsec h3{margin:0 0 16px;font-size:30px}
+.bsec.low{background:#fbf7f1}.bsec.fin{background:#f3f8f4}
+.lvb{background:var(--green);color:#fff;font:700 12px var(--sans);letter-spacing:.12em;padding:4px 14px}
+.mbox.live .lvb{display:block}
