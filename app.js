@@ -6,6 +6,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": 
 const norm = s => String(s || "").trim().toLowerCase();
 const val = id => $("#" + id)?.value.trim() || "";
 const S = { role: null, contest: null, people: [], matches: [], words: [], answers: [], events: [], me: null, tab: "overview", ch: null, busy: false };
+sb.auth.onAuthStateChange((_e, sess) => { S.token = sess?.access_token; });
 const nm = id => S.people.find(p => p.id === id)?.name;
 
 /* ---------- UI helpers ---------- */
@@ -233,10 +234,26 @@ function violation(reason) {
   const strict = S.contest.security_mode === "strict" || S.warned;
   if (!strict) { S.warned = true; toast("Warning: leaving this screen again will disqualify you."); }
   else { S.localDQ = true; S.reason = reason; }
-  sb.from("security_events").insert({ contest_id: S.contest.id, contestant_id: S.me, reason, severity: strict ? "dq" : "warning" }).then(() => { });
+  reportEvent({ contest_id: S.contest.id, contestant_id: S.me, reason, severity: strict ? "dq" : "warning" });
   render();
 }
-document.addEventListener("visibilitychange", () => document.hidden && violation("The contest tab was hidden."));
+// keepalive lets the request finish even while the phone is sending the browser to the background;
+// if it still fails, the event is kept on the device and re-sent when the student returns.
+function reportEvent(ev) {
+  localStorage.sd_unsent = JSON.stringify(ev);
+  if (!S.token) return;
+  fetch(`${CFG.SUPABASE_URL}/rest/v1/security_events`, {
+    method: "POST", keepalive: true,
+    headers: { apikey: CFG.SUPABASE_ANON_KEY, Authorization: "Bearer " + S.token, "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify(ev)
+  }).then(r => { if (r.ok) localStorage.removeItem("sd_unsent"); }).catch(() => { });
+}
+function flush() {
+  const ev = JSON.parse(localStorage.sd_unsent || "null"); if (!ev) return;
+  sb.from("security_events").insert(ev).then(({ error }) => { if (!error) localStorage.removeItem("sd_unsent"); });
+}
+window.addEventListener("online", flush);
+document.addEventListener("visibilitychange", () => { if (document.hidden) violation("The contest tab was hidden."); else flush(); });
 window.addEventListener("blur", () => setTimeout(() => !document.hasFocus() && violation("The contest window lost focus."), 400));
 
 /* ---------- projector UI ---------- */
@@ -427,6 +444,6 @@ setInterval(() => S.contest && doRefresh(), 8000);   // safety net if a realtime
   const me = JSON.parse(localStorage.sd_me || "null");
   if (session && me) {
     const { data: c } = await sb.from("contests").select("*").eq("id", me.contest).maybeSingle();
-    if (c) { Object.assign(S, { role: "student", contest: c, me: me.id }); show("student"); subscribe(); doRefresh(); }
+    if (c) { Object.assign(S, { role: "student", contest: c, me: me.id }); show("student"); subscribe(); doRefresh(); flush(); }
   }
 })();
