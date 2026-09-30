@@ -88,3 +88,38 @@ th{color:var(--muted);font-size:14px}
 
 .bar{flex-wrap:wrap;gap:12px}
 @media(max-width:600px){.bar{padding:16px}.right{margin-left:auto}.out{padding:9px 16px;font-size:14px}.pill{padding:9px 16px;font-size:14px}.panel{width:calc(100% - 24px);padding:20px;margin:18px auto 40px}}
+
+/* ---- Standard Android phone (360-430px wide) ---- */
+html{-webkit-text-size-adjust:100%}
+svg,img{max-width:100%}
+.panel{overflow-wrap:anywhere}
+.toast{width:max-content;max-width:calc(100vw - 32px);text-align:center;border-radius:18px;bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+@media(max-width:600px){
+  .bar{padding:12px 14px;gap:8px}
+  .brand{font-size:22px}.bar p{font-size:11px;margin-top:2px}
+  .pill,.out{padding:8px 14px;font-size:13px}
+  .panel{width:calc(100% - 20px);margin:12px auto 32px;padding:18px;border-radius:24px}
+  .panel.proj{padding:16px}
+  .title{font-size:34px;letter-spacing:.04em}.title.sm{font-size:28px}
+  .sub{font-size:17px;margin-bottom:22px}
+  .modes{gap:12px}
+  .mode{display:grid;grid-template-columns:auto 1fr;column-gap:16px;row-gap:2px;text-align:left;align-items:center;padding:16px 18px;border-radius:24px}
+  .mode .emoji{grid-row:span 2;font-size:40px;width:44px;height:44px;text-align:center}
+  .mode b{font-size:22px}.mode i{font-size:14px}
+  input,textarea,select{padding:14px;border-radius:14px;font-size:16px}
+  .btn{padding:14px 22px;min-height:46px}.btn.sm{padding:10px 16px;min-height:40px}
+  .tabs{gap:8px;margin-bottom:18px}.tab{padding:10px 16px;font-size:14px}
+  .row{gap:10px}h3{font-size:22px}
+  .stats{grid-template-columns:1fr 1fr;gap:10px}.stat b{font-size:30px}
+  .card{padding:16px;border-radius:20px}
+  .code{font-size:36px}
+  table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  th,td{padding:10px 8px;font-size:14px}
+  .col{min-width:190px}.col h4{font-size:15px}.proj .col{min-width:210px}.proj .pl{font-size:16px;padding:10px 12px}
+  .wordcard{padding:18px;border-radius:22px}.wordcard .btn{width:100%}.wordcard p{font-size:18px}
+  .big{font-size:64px}#ans{font-size:22px;letter-spacing:.06em}
+  .ph{flex-wrap:wrap;gap:10px;margin-bottom:16px}
+  .stage{padding:24px 12px;border-radius:24px;margin-bottom:20px}
+  .vs{font-size:clamp(24px,8vw,40px)}.mask{font-size:22px;letter-spacing:.12em}
+  .empty{font-size:17px;padding:18px}
+}
