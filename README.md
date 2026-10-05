@@ -38,3 +38,10 @@ If AI Master is unavailable when adding words, the app falls back to a free dict
 - **Students:** Student → enter the code and name. Every student gets their own random words. Press **AI Master** to see and hear the definition and hear the example sentence (voice only), then type the word.
 - **Practice:** right/wrong and the correct spelling are shown after each word; a student can practise again with new random words.
 - **Quiz:** no feedback while answering; the student sees the score at the end and the teacher sees live results. **Close** a quiz to stop further answers.
+
+
+## Several teachers on one app
+Every teacher has their own account and sees only their own contests, students, words, practices and quizzes. A student sees only the contest they joined.
+- **Run `isolation.sql` once** in Supabase → SQL Editor (new installs get it through `schema.sql`). Do this together with the new app files: older app files cannot join a contest after it.
+- **Add a teacher:** Supabase → Authentication → Users → Add user (email + password). Keep "Allow new users to sign up" turned off, so only accounts you create can be teachers.
+- AI Master (the Edge Function) is shared by all teachers; it uses your one API key.

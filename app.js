@@ -551,7 +551,9 @@ const act = {
     if (!code || !name) return toast("Enter the contest code and your name.");
     let { data: { session } } = await sb.auth.getSession();
     if (!session) { const r = await sb.auth.signInAnonymously(); if (r.error) return toast("Could not start a student session. Is anonymous sign-in enabled?"); session = r.data.session; }
-    const { data: c } = await sb.from("contests").select("*").eq("code", code).maybeSingle();
+    const lk = await sb.rpc("contest_by_code", { p_code: code });
+    if (lk.error && /contest_by_code|schema cache|Could not find/i.test(lk.error.message)) return toast("Setup needed: the teacher must run isolation.sql in Supabase.");
+    const c = lk.data?.[0];
     if (!c) return joinDrill(code, name);
     let { data: p, error } = await sb.from("contestants").insert({ contest_id: c.id, name, student_no: val("sNo") }).select().single();
     if (error) {
