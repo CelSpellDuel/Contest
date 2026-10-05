@@ -5,7 +5,7 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const norm = s => String(s || "").trim().toLowerCase();
 const val = id => $("#" + id)?.value.trim() || "";
-const S = { role: null, contest: null, people: [], matches: [], words: [], answers: [], events: [], me: null, tab: "overview", ch: null, busy: false };
+const S = { role: null, contest: null, people: [], matches: [], words: [], answers: [], events: [], me: null, tab: "overview", ch: null, busy: false, drills: [], drillSel: null, dWords: [], dAttempts: [], drillErr: null, drill: null };
 sb.auth.onAuthStateChange((_e, sess) => { S.token = sess?.access_token; });
 const nm = id => S.people.find(p => p.id === id)?.name;
 const TTS = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
@@ -26,7 +26,7 @@ function go(id) {
 function leave() {
   if (TTS) speechSynthesis.cancel();
   if (S.ch) sb.removeChannel(S.ch);
-  Object.assign(S, { ch: null, role: null, contest: null, people: [], matches: [], words: [], answers: [], events: [], me: null, key: null, cur: null, localDQ: false, warned: false, sent: null, reason: null });
+  Object.assign(S, { ch: null, role: null, contest: null, people: [], matches: [], words: [], answers: [], events: [], me: null, drills: [], drillSel: null, dWords: [], dAttempts: [], drillErr: null, drill: null, key: null, cur: null, localDQ: false, warned: false, sent: null, reason: null });
 }
 const statusPill = () => { const s = S.contest?.status || "lobby"; pill(s.toUpperCase(), s === "finished" ? "off" : ""); };
 
@@ -38,6 +38,7 @@ function subscribe() {
   ["contestants", "matches", "words", "answers", "security_events", "match_secrets"].forEach(t =>
     ch = ch.on("postgres_changes", { event: "*", schema: "public", table: t, filter: `contest_id=eq.${id}` }, refresh));
   ch = ch.on("postgres_changes", { event: "*", schema: "public", table: "contests", filter: `id=eq.${id}` }, refresh);
+  if (S.role === "teacher") ch = ch.on("postgres_changes", { event: "*", schema: "public", table: "drill_attempts" }, refresh);
   S.ch = ch.subscribe();
 }
 let rt;
@@ -61,6 +62,7 @@ async function doRefresh() {
   const sec = sc.data || [];
   const by = new Map(sec.map(r => [r.match_id, r]));
   S.matches.forEach(mm => { const r = by.get(mm.id); Object.assign(mm, r && r.attempt === mm.attempt ? { word: r.word, definition: r.definition, example: r.example } : { word: mm.revealed_word || null, definition: null, example: null }); });
+  if (t && S.tab === "drills") await loadDrills();
   if (t) await reconcile();
   render();
 }
@@ -200,7 +202,7 @@ function bracketsHtml() {
 function renderTeacher() {
   const ae = document.activeElement;
   if (ae && ae.closest("#teacher") && /INPUT|TEXTAREA|SELECT/.test(ae.tagName)) return;
-  const c = S.contest, tabs = [["overview", "Overview"], ["contestants", "Contestants"], ["words", "Word bank"], ["matches", "Matches"], ["security", "Security"], ["projector", "Projector"]];
+  const c = S.contest, tabs = [["overview", "Overview"], ["contestants", "Contestants"], ["words", "Word bank"], ["drills", "Practice & Quiz"], ["matches", "Matches"], ["security", "Security"], ["projector", "Projector"]];
   let body = "";
   if (!c || S.creating) {
     body = `<div class="narrow" style="max-width:520px;margin:auto"><h3>New contest</h3><br>
@@ -238,6 +240,8 @@ function renderTeacher() {
         <div>
         ${m.status !== "done" ? `<button class="btn ghost sm" data-act="force" data-id="${m.id}" data-w="p1">${esc(nm(m.p1))} wins</button> <button class="btn ghost sm" data-act="force" data-id="${m.id}" data-w="p2">${esc(nm(m.p2))} wins</button>` : ""}</div></div>`;
       }).join("")}<br>${bracketsHtml()}`;
+  } else if (S.tab === "drills") {
+    body = drillsHtml();
   } else if (S.tab === "projector") {
     body = projectorHtml();
   } else {
@@ -246,6 +250,125 @@ function renderTeacher() {
       : `<p class="empty">No security violations.</p>`}`;
   }
   $("#teacher").innerHTML = (c && !S.creating ? `<nav class="tabs">${tabs.map(([k, l]) => `<button class="tab ${S.tab === k ? "on" : ""}" data-act="tab" data-id="${k}">${l}</button>`).join("")}</nav>` : "") + body;
+}
+
+/* ---------- teacher: practice & quiz ---------- */
+async function loadDrills() {
+  const r = await sb.from("drills").select("*").order("created_at", { ascending: false });
+  S.drillErr = r.error ? r.error.message : null;
+  S.drills = r.data || [];
+  if (S.drillSel && !S.drills.some(d => d.id === S.drillSel)) S.drillSel = null;
+  if (S.drillSel) {
+    const [w, a] = await Promise.all([
+      sb.from("drill_words").select("*").eq("drill_id", S.drillSel).order("created_at"),
+      sb.from("drill_attempts").select("*").eq("drill_id", S.drillSel).order("created_at")]);
+    S.dWords = w.data || []; S.dAttempts = a.data || [];
+  } else { S.dWords = []; S.dAttempts = []; }
+}
+async function reloadDrills() { await loadDrills(); renderTeacher(); }
+const kindName = k => k === "quiz" ? "Quiz" : "Practice";
+function drillsHtml() {
+  if (S.drillErr) return `<h3>Practice &amp; Quiz</h3><br><div class="card"><p>These modules need a one-time database setup. Open <b>drills.sql</b>, paste it into Supabase → SQL Editor, run it, then reload this page.</p><small>${esc(S.drillErr)}</small></div>`;
+  const d = S.drills.find(x => x.id === S.drillSel);
+  if (d) return drillDetailHtml(d);
+  return `<h3>Practice &amp; Quiz</h3><br>
+    <p class="sub" style="text-align:left;margin-bottom:14px">Make a practice or quiz, add its words, and give students the code. Each student gets their own random words.</p>
+    <div class="card" style="margin-bottom:24px"><div style="max-width:520px">
+      <input id="dName" placeholder="Name (e.g. Week 3 words)">
+      <select id="dKind"><option value="practice">Practice (students see right/wrong after each word)</option><option value="quiz">Quiz (score shown at the end, teacher sees results)</option></select>
+      <input id="dCount" type="number" min="1" max="200" inputmode="numeric" placeholder="Number of words per student (e.g. 10)">
+      <button class="btn" data-act="createDrill">Create</button></div></div>
+    ${S.drills.length ? S.drills.map(d => `<div class="card row" style="margin-bottom:14px"><div><b>${esc(d.name)}</b> <span class="tag">${kindName(d.kind)}</span> <span class="tag ${d.status === "open" ? "active" : "eliminated"}">${d.status}</span>
+      <br><small>${d.item_count} words per student · code <b>${esc(d.code)}</b></small></div>
+      <button class="btn ghost sm" data-act="openDrill" data-id="${d.id}">Manage</button></div>`).join("") : `<p class="empty">No practice or quiz yet.</p>`}`;
+}
+function drillDetailHtml(d) {
+  const few = S.dWords.length < d.item_count;
+  const rows = S.dAttempts.slice().sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+  return `<div class="row"><div><button class="btn ghost sm" data-act="backDrills">← All</button> <h3 style="display:inline;margin-left:10px">${esc(d.name)}</h3> <span class="tag">${kindName(d.kind)}</span> <span class="tag ${d.status === "open" ? "active" : "eliminated"}">${d.status}</span></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn ghost sm" data-act="toggleDrill">${d.status === "open" ? "Close (stop answers)" : "Re-open"}</button><button class="btn ghost sm" data-act="delDrill">Delete</button></div></div>
+    <div class="card center" style="margin-bottom:22px"><p class="sub" style="margin-bottom:8px">${kindName(d.kind)} code</p><div class="code">${esc(d.code)}</div>
+      <p class="sub" style="margin:10px 0 14px">Students tap Student, then enter this code and their name.</p><button class="btn ghost" data-act="copyDrill">Copy code</button></div>
+    <div class="card row" style="margin-bottom:22px"><div><b>Number of ${d.kind === "quiz" ? "quiz items" : "words to practice"}</b><br><small>Each student gets this many random words from your list.</small></div>
+      <div style="display:flex;gap:10px;align-items:center"><input id="dCountIn" type="number" min="1" max="200" value="${d.item_count}" style="width:110px;margin:0"><button class="btn ghost sm" data-act="setDrillCount">Update</button></div></div>
+    ${few ? `<div class="card" style="margin-bottom:22px;border-color:var(--amber)"><b>Add more words.</b> You have ${S.dWords.length} but each student needs ${d.item_count}. Students with fewer words available will get all of them.</div>` : ""}
+    <h3>Words (${S.dWords.length})</h3><br>
+    <textarea id="dBulk" placeholder="necessary&#10;One word per line, or separate them with commas. AI Master writes the definition and example."></textarea>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px"><button class="btn" data-act="dAddWords">Add words</button>${S.words.length ? '<button class="btn ghost" data-act="dImport">Import contest word bank</button>' : ""}</div>
+    <table><tr><th>Word</th><th>Definition</th><th>Example</th><th></th></tr>${S.dWords.map(w =>
+      `<tr><td><b>${esc(w.word)}</b></td><td>${esc(w.definition)}</td><td>${w.example ? esc(w.example) : '<span class="tag disqualified">no example</span>'}</td><td><button class="btn ghost sm" data-act="dSayWord" data-id="${w.id}">🔊</button> <button class="btn ghost sm" data-act="dEditWord" data-id="${w.id}">Edit</button> <button class="btn ghost sm" data-act="dDelWord" data-id="${w.id}">Delete</button></td></tr>`).join("")}</table>
+    <br><h3>Results (${rows.length})</h3><br>
+    ${rows.length ? `<table><tr><th>#</th><th>Name</th><th>Student no.</th><th>Progress</th><th>Score</th><th>Status</th><th></th></tr>${rows.map((a, i) =>
+      `<tr><td>${i + 1}</td><td><b>${esc(a.name)}</b></td><td>${esc(a.student_no)}</td><td>${a.answered}/${a.word_ids.length}</td><td><b>${a.score}</b>/${a.answered}</td><td><span class="tag ${a.status === "done" ? "active" : ""}">${a.status === "done" ? "finished" : "in progress"}</span></td><td><button class="btn ghost sm" data-act="dDelAttempt" data-id="${a.id}">Remove</button></td></tr>`).join("")}</table>`
+      : `<p class="empty">No students yet. Share the code ${esc(d.code)}.</p>`}`;
+}
+const curDrill = () => S.drills.find(x => x.id === S.drillSel);
+
+/* ---------- student: practice & quiz ---------- */
+async function joinDrill(code, name) {
+  const meta = { code, name, no: val("sNo") };
+  const r = await sb.rpc("drill_join", { p_code: code, p_name: name, p_no: meta.no, p_restart: false });
+  if (r.error) { const m = r.error.message || ""; return toast(/Invalid code|does not exist|schema cache|Could not find/i.test(m) ? "Invalid code. Check it with your teacher." : m); }
+  LS.del("sd_me");
+  await openDrillAttempt(r.data, meta);
+}
+async function openDrillAttempt(att, meta) {
+  const r = await sb.rpc("drill_items", { p_attempt: att.attempt_id });
+  if (r.error) return toast(r.error.message);
+  leave();
+  S.role = "drill";
+  const items = r.data || [], first = items.findIndex(i => i.given == null);
+  S.drill = { att: att.attempt_id, kind: att.kind, title: att.name, meta, items, idx: first < 0 ? items.length : first, fb: null, shown: {}, busy: false };
+  LS.set("sd_drill", JSON.stringify(meta));
+  show("student"); pill(kindName(att.kind).toUpperCase()); drawDrill();
+}
+async function reloadDrillItems() {
+  const D = S.drill, r = await sb.rpc("drill_items", { p_attempt: D.att });
+  if (!r.error && r.data) D.items = r.data;
+}
+function drawDrill() {
+  const D = S.drill; if (!D) return;
+  const n = D.items.length, quiz = D.kind === "quiz";
+  let h;
+  if (!n) h = `<div class="center"><div class="big">📭</div><h2 class="title sm">No words</h2><p class="sub">The teacher has not added any words yet.</p></div>`;
+  else if (D.idx >= n) {
+    const ok = D.items.filter(i => i.correct).length, hidden = D.items.every(i => i.correct == null);
+    const missed = D.items.filter(i => i.correct === false);
+    h = `<div class="center"><div class="big">${quiz ? "📝" : "🎉"}</div><h2 class="title sm">${quiz ? "Quiz finished" : "Practice finished"}</h2>
+      ${hidden ? `<p class="sub">Your answers were sent to your teacher, ${esc(D.meta.name)}.</p>` : `<p class="sub">${esc(D.meta.name)}, you scored<br><b style="font-size:44px;color:var(--navy)">${ok} / ${n}</b></p>`}</div>
+      ${!quiz && missed.length ? `<div class="card" style="margin-bottom:18px"><b>Words to review</b>${missed.map(i => `<p style="margin:8px 0 0">${esc(i.word)} <small>(you typed: ${esc(i.given)})</small></p>`).join("")}</div>` : ""}
+      ${quiz ? "" : `<button class="btn" data-act="drillAgain">Practice again (new random words)</button>`}`;
+  } else {
+    const it = D.items[D.idx], fb = D.fb, last = D.idx === n - 1;
+    h = `<p class="sub" style="margin-bottom:8px">${kindName(D.kind)} · ${esc(D.title)}</p>
+      <div class="dbar"><i style="width:${Math.round(D.idx / n * 100)}%"></i></div>
+      <p class="sub" style="margin:8px 0 14px">Word ${D.idx + 1} of ${n}</p>
+      <div class="wordcard"><button class="btn" data-act="drillSpeak">🔊 AI Master</button><p id="defText"${D.shown[it.word_id] ? "" : " hidden"}>${esc(it.definition)}</p>
+        <p class="sub" style="font-size:16px;margin:12px 0 0">Press AI Master to see and hear the definition and a sentence. You can press it again to repeat.</p></div>
+      ${fb ? `<div class="card center" style="margin-bottom:16px"><div class="big" style="font-size:56px">${fb.ok ? "✅" : "❌"}</div><h3>${fb.ok ? "Correct!" : "Not quite"}</h3>${fb.ok ? "" : `<p>You typed: <b>${esc(fb.given)}</b></p>`}<p>The word is <b>${esc(fb.word)}</b></p></div>
+        <button class="btn" data-act="drillNext">${last ? "See results" : "Next word"}</button>`
+        : `<input id="ans" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type the word" onpaste="return false"><button class="btn" data-act="submit">${quiz && last ? "Submit and finish" : "Submit answer"}</button>`}`;
+  }
+  $("#student").innerHTML = h;
+  $("#ans")?.focus();
+}
+async function drillSubmit() {
+  const D = S.drill, it = D?.items[D.idx], v = val("ans");
+  if (!it || D.busy) return;
+  if (!v) return toast("Type your answer first.");
+  D.busy = true;
+  const r = await sb.rpc("drill_answer", { p_attempt: D.att, p_word_id: it.word_id, p_answer: v });
+  D.busy = false;
+  if (r.error) return toast(r.error.message);
+  it.given = v;
+  if (D.kind === "practice") {
+    it.correct = r.data.correct;
+    D.fb = { ok: r.data.correct, word: r.data.word, given: v };
+  } else {
+    D.idx++;
+    if (D.idx >= D.items.length) await reloadDrillItems();
+  }
+  drawDrill();
 }
 
 /* ---------- student UI ---------- */
@@ -381,6 +504,31 @@ async function askMaster(words) {
   }
   return out;
 }
+// Reads the "one word per line / comma" box, asks AI Master (then the free dictionary) for definitions + examples.
+async function collectWords(inputId, existing, base) {
+  const lines = val(inputId).split("\n").flatMap(l => l.includes("|") ? [l] : l.split(","));
+  const items = lines.map(x => x.trim()).filter(Boolean);
+  if (!items.length) { toast("Type a word first."); return null; }
+  const have = new Set(existing.map(w => norm(w.word))), rows = [], nf = [], noEx = [];
+  S.aiDown = false;
+  const todo = items.filter(it => !it.includes("|") && !have.has(norm(it)));
+  let ai = {};
+  if (todo.length) { toast("AI Master is writing the definitions…"); ai = await askMaster(todo); }
+  for (const it of items) {
+    const r = it.split("|").map(x => x.trim()), word = r[0];
+    if (!word || have.has(norm(word))) continue;
+    have.add(norm(word));
+    let def = r[1], ex = r.slice(2).join(" | ");
+    if (!def) {
+      const d = ai[norm(word)] || await lookup(word);
+      if (!d) { nf.push(word); continue; }
+      def = d.definition; ex = d.example;
+    }
+    if (!ex) noEx.push(word);
+    rows.push({ ...base, word, definition: def, example: ex });
+  }
+  return { rows, notes: [S.aiDown && `AI Master is unavailable (${S.aiErr}), so the dictionary was used.`, nf.length && `No dictionary entry: ${nf.join(", ")}.`, noEx.length && `No example sentence: ${noEx.join(", ")} (use Edit).`].filter(Boolean) };
+}
 const genCode = () => Array.from({ length: 6 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random() * 32)]).join("");
 const act = {
   async teacherLogin() {
@@ -390,11 +538,12 @@ const act = {
     loadTeacherContest();
   },
   async logout() {
-    if (S.role === "student" && !S.armed) {          // two taps, no popup (a popup would count as leaving the screen)
+    const quizOn = S.role === "drill" && S.drill?.kind === "quiz" && S.drill.idx < S.drill.items.length;
+    if ((S.role === "student" || quizOn) && !S.armed) {          // two taps, no popup (a popup would count as leaving the screen)
       S.armed = true; setTimeout(() => S.armed = false, 4000);
-      return toast("Tap Log out again to confirm. You may not be able to rejoin once the contest has started.");
+      return toast(quizOn ? "Tap Log out again to confirm. Your quiz is not finished." : "Tap Log out again to confirm. You may not be able to rejoin once the contest has started.");
     }
-    S.armed = false; LS.del("sd_me"); LS.del("sd_unsent");
+    S.armed = false; LS.del("sd_me"); LS.del("sd_unsent"); LS.del("sd_drill");
     await sb.auth.signOut(); go("landing");
   },
   async join() {
@@ -403,17 +552,17 @@ const act = {
     let { data: { session } } = await sb.auth.getSession();
     if (!session) { const r = await sb.auth.signInAnonymously(); if (r.error) return toast("Could not start a student session. Is anonymous sign-in enabled?"); session = r.data.session; }
     const { data: c } = await sb.from("contests").select("*").eq("code", code).maybeSingle();
-    if (!c) return toast("Invalid contest code.");
+    if (!c) return joinDrill(code, name);
     let { data: p, error } = await sb.from("contestants").insert({ contest_id: c.id, name, student_no: val("sNo") }).select().single();
     if (error) {
       const r = await sb.from("contestants").select("*").eq("contest_id", c.id).eq("user_id", session.user.id).maybeSingle();
       if (!r.data) return toast(c.status !== "lobby" ? "This contest has already started." : "The contest is full.");
       p = r.data;
     }
-    LS.set("sd_me", JSON.stringify({ contest: c.id, id: p.id }));
+    LS.set("sd_me", JSON.stringify({ contest: c.id, id: p.id })); LS.del("sd_drill");
     leave(); Object.assign(S, { role: "student", contest: c, me: p.id }); show("student"); subscribe(); doRefresh();
   },
-  tab(d) { S.tab = d.id; S.creating = false; renderTeacher(); },
+  tab(d) { S.tab = d.id; S.creating = false; renderTeacher(); if (d.id === "drills") reloadDrills(); },
   newContest() { S.creating = true; renderTeacher(); },
   cancelNew() { S.creating = false; renderTeacher(); },
   async createContest() {
@@ -434,33 +583,13 @@ const act = {
   },
   copy() { navigator.clipboard.writeText(S.contest.code); toast("Code copied."); },
   async addWords() {
-    const lines = val("wBulk").split("\n").flatMap(l => l.includes("|") ? [l] : l.split(","));
-    const items = lines.map(x => x.trim()).filter(Boolean);
-    if (!items.length) return toast("Type a word first.");
-    const have = new Set(S.words.map(w => norm(w.word))), rows = [], nf = [], noEx = [];
-    S.aiDown = false;
-    const todo = items.filter(it => !it.includes("|") && !have.has(norm(it)));
-    let ai = {};
-    if (todo.length) { toast("AI Master is writing the definitions…"); ai = await askMaster(todo); }
-    for (const it of items) {
-      const r = it.split("|").map(x => x.trim()), word = r[0];
-      if (!word || have.has(norm(word))) continue;
-      have.add(norm(word));
-      let def = r[1], ex = r.slice(2).join(" | ");
-      if (!def) {
-        const d = ai[norm(word)] || await lookup(word);
-        if (!d) { nf.push(word); continue; }
-        def = d.definition; ex = d.example;
-      }
-      if (!ex) noEx.push(word);
-      rows.push({ contest_id: S.contest.id, word, definition: def, example: ex });
-    }
-    if (rows.length) {
-      const { error } = await sb.from("words").insert(rows);
+    const r = await collectWords("wBulk", S.words, { contest_id: S.contest.id }); if (!r) return;
+    if (r.rows.length) {
+      const { error } = await sb.from("words").insert(r.rows);
       if (error) return toast(error.message);
       $("#wBulk").value = "";
     }
-    toast([`${rows.length} word(s) added.`, S.aiDown && `AI Master is unavailable (${S.aiErr}), so the dictionary was used.`, nf.length && `No dictionary entry: ${nf.join(", ")}.`, noEx.length && `No example sentence: ${noEx.join(", ")} (use Edit).`].filter(Boolean).join(" "));
+    toast([`${r.rows.length} word(s) added.`, ...r.notes].filter(Boolean).join(" "));
     doRefresh();
   },
   async editWord(d) {
@@ -475,8 +604,85 @@ const act = {
   startAll,
   async force(d) { const m = S.matches.find(x => x.id === d.id), w = m[d.w]; await finish(m, w, d.w === "p1" ? m.p2 : m.p1); refresh(); },
   speak,
+  drillSpeak() {
+    const D = S.drill, it = D?.items[D.idx]; if (!it) return;
+    D.shown[it.word_id] = true;
+    const p = $("#defText"); if (p) p.hidden = false;       // the definition appears; the example sentence is voice-only
+    say(script(it));
+  },
+  drillNext() { const D = S.drill; if (!D) return; D.fb = null; D.idx++; drawDrill(); },
+  async drillAgain() {
+    const M = S.drill?.meta; if (!M) return;
+    const r = await sb.rpc("drill_join", { p_code: M.code, p_name: M.name, p_no: M.no, p_restart: true });
+    if (r.error) return toast(r.error.message);
+    await openDrillAttempt(r.data, M);
+  },
+  async createDrill() {
+    const name = val("dName"), kind = $("#dKind").value, n = parseInt(val("dCount"), 10);
+    if (!name) return toast("Enter a name.");
+    if (!n || n < 1) return toast("Enter how many words each student gets.");
+    let res;
+    for (let i = 0; i < 3; i++) {                                   // retry in the unlikely case of a duplicate code
+      res = await sb.from("drills").insert({ name, kind, item_count: n, code: genCode() }).select().single();
+      if (!res.error || res.error.code !== "23505") break;
+    }
+    if (res.error) return toast("Could not create: " + res.error.message);
+    S.drillSel = res.data.id; await reloadDrills(); toast(`${kindName(kind)} created. Now add its words.`);
+  },
+  openDrill(d) { S.drillSel = d.id; reloadDrills(); },
+  backDrills() { S.drillSel = null; reloadDrills(); },
+  async setDrillCount() {
+    const n = parseInt(val("dCountIn"), 10); if (!n || n < 1) return toast("Enter a number of 1 or more.");
+    const { error } = await sb.from("drills").update({ item_count: n }).eq("id", S.drillSel);
+    if (error) return toast(error.message);
+    toast("Updated. Students who already joined keep their words."); reloadDrills();
+  },
+  async toggleDrill() {
+    const d = curDrill(); if (!d) return;
+    const { error } = await sb.from("drills").update({ status: d.status === "open" ? "closed" : "open" }).eq("id", d.id);
+    if (error) return toast(error.message);
+    reloadDrills();
+  },
+  async delDrill() {
+    const d = curDrill(); if (!d || !confirm(`Delete "${d.name}" and all its results?`)) return;
+    const { error } = await sb.from("drills").delete().eq("id", d.id);
+    if (error) return toast(error.message);
+    S.drillSel = null; reloadDrills();
+  },
+  copyDrill() { const d = curDrill(); if (d) { navigator.clipboard.writeText(d.code); toast("Code copied."); } },
+  async dAddWords() {
+    const d = curDrill(); if (!d) return;
+    const r = await collectWords("dBulk", S.dWords, { drill_id: d.id }); if (!r) return;
+    if (r.rows.length) {
+      const { error } = await sb.from("drill_words").insert(r.rows);
+      if (error) return toast(error.message);
+      $("#dBulk").value = "";
+    }
+    toast([`${r.rows.length} word(s) added.`, ...r.notes].filter(Boolean).join(" "));
+    reloadDrills();
+  },
+  async dImport() {
+    const d = curDrill(); if (!d) return;
+    const have = new Set(S.dWords.map(w => norm(w.word)));
+    const rows = S.words.filter(w => !have.has(norm(w.word))).map(w => ({ drill_id: d.id, word: w.word, definition: w.definition, example: w.example }));
+    if (!rows.length) return toast("Nothing new to import.");
+    const { error } = await sb.from("drill_words").insert(rows);
+    if (error) return toast(error.message);
+    toast(`${rows.length} word(s) imported.`); reloadDrills();
+  },
+  async dEditWord(d) {
+    const w = S.dWords.find(x => x.id === d.id); if (!w) return;
+    const def = prompt("Definition", w.definition); if (def === null) return;
+    const ex = prompt("Example sentence", w.example || ""); if (ex === null) return;
+    await sb.from("drill_words").update({ definition: def.trim(), example: ex.trim() }).eq("id", w.id);
+    reloadDrills();
+  },
+  async dDelWord(d) { await sb.from("drill_words").delete().eq("id", d.id); reloadDrills(); },
+  dSayWord(d) { const w = S.dWords.find(x => x.id === d.id); if (w) say(script(w)); },
+  async dDelAttempt(d) { await sb.from("drill_attempts").delete().eq("id", d.id); reloadDrills(); },
   sayWord(d) { const w = S.words.find(x => x.id === d.id); if (w) say(script(w)); },
   async submit() {
+    if (S.role === "drill") return drillSubmit();
     const v = val("ans"), m = S.cur; if (!v || !m) return toast("Type your answer first.");
     const { error } = await sb.from("answers").insert({ contest_id: S.contest.id, match_id: m.id, contestant_id: S.me, attempt: m.attempt, answer: v });
     if (error) return toast("Could not send your answer. Try again.");
@@ -503,5 +709,11 @@ setInterval(() => S.contest && doRefresh(), 8000);   // safety net if a realtime
   if (session && me) {
     const { data: c } = await sb.from("contests").select("*").eq("id", me.contest).maybeSingle();
     if (c) { Object.assign(S, { role: "student", contest: c, me: me.id }); show("student"); subscribe(); doRefresh(); flush(); }
+  } else if (session) {
+    const dm = JSON.parse(LS.get("sd_drill") || "null");
+    if (dm) {
+      const r = await sb.rpc("drill_join", { p_code: dm.code, p_name: dm.name, p_no: dm.no, p_restart: false });
+      if (!r.error) await openDrillAttempt(r.data, dm); else LS.del("sd_drill");
+    }
   }
 })();

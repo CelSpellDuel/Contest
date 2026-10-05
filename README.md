@@ -30,3 +30,11 @@ Paid alternative: add `ANTHROPIC_API_KEY` instead. If both exist, Gemini is used
 
 **Students** use AI Master: during a duel each student presses the **🔊 AI Master** button on their own device and hears the word, its definition and an example sentence. The projector does not read anything aloud.
 If AI Master is unavailable when adding words, the app falls back to a free dictionary.
+
+## Practice & Quiz modules
+**One-time setup:** run `drills.sql` in Supabase → SQL Editor (new installs get it through `schema.sql`). Existing contests are not touched.
+
+- **Teacher → Practice & Quiz tab:** create a *Practice* or a *Quiz*, set the number of words per student, add the words (AI Master writes the definition and example, or import the contest word bank). Each one gets its own code.
+- **Students:** Student → enter the code and name. Every student gets their own random words. Press **AI Master** to see and hear the definition and hear the example sentence (voice only), then type the word.
+- **Practice:** right/wrong and the correct spelling are shown after each word; a student can practise again with new random words.
+- **Quiz:** no feedback while answering; the student sees the score at the end and the teacher sees live results. **Close** a quiz to stop further answers.
