@@ -37,7 +37,8 @@ If AI Master is unavailable when adding words, the app falls back to a free dict
 - **Teacher → Practice & Quiz tab:** create a *Practice* or a *Quiz*, set the number of words per student, add the words (AI Master writes the definition and example, or import the contest word bank). Each one gets its own code.
 - **Students:** Student → enter the code and name. Every student gets their own random words. Press **AI Master** to see and hear the definition and hear the example sentence (voice only), then type the word.
 - **Practice:** right/wrong and the correct spelling are shown after each word; a student can practise again with new random words.
-- **Quiz:** no feedback while answering; the student sees the score at the end and the teacher sees live results. **Close** a quiz to stop further answers.
+- **Quiz:** students join with the code and wait in a waiting room. The teacher sees who has joined and presses **▶ Start quiz**; only then do the words appear. No feedback while answering; the student sees the score at the end and the teacher sees live results. **Close** a quiz to stop further answers.
+- If a word gets no definition (AI Master and the free dictionary both failed), it is still added with a "needs definition" tag; press **Edit** to type it. Such words are not given to students.
 
 
 ## Several teachers on one app
