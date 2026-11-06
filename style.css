@@ -208,3 +208,30 @@ body.auth .deco{display:block;position:fixed;inset:0;overflow:hidden;pointer-eve
   .sh{transform:scale(.6)}
   .auth-screen.panel.narrow{padding:24px 20px 22px;margin:0 auto}
 }
+
+
+/* ================= Teacher dashboard: left sidebar navigation ================= */
+#teacher.panel.active{display:grid;grid-template-columns:270px minmax(0,1fr);gap:28px;align-items:start;padding:28px}
+#teacher.noside.panel.active{display:block}
+#teacher .tmain{min-width:0}
+.side{position:sticky;top:16px;display:flex;flex-direction:column;gap:16px}
+.sidecard{border:1px solid var(--line);border-radius:24px;padding:18px 14px;background:#fff;box-shadow:0 6px 18px rgba(19,45,75,.06)}
+.sidehd{font:800 12px var(--sans);letter-spacing:.14em;color:var(--muted);padding:4px 12px 12px}
+.side .tabs{display:flex;flex-direction:column;gap:6px;margin:0;flex-wrap:nowrap}
+.side .tab{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:0;border-radius:14px;padding:13px 14px;font:700 16px var(--sans);color:#1b2a3b;background:transparent}
+.side .tab:hover{background:#eef3f9}
+.side .tab.on{background:var(--k-blue);color:#fff;box-shadow:0 6px 0 rgba(0,0,0,.18)}
+.side .ti{width:26px;text-align:center;font-size:18px}
+.sidestat{border:1px solid var(--line);border-radius:20px;padding:14px 16px;background:#f3f8f4;display:flex;flex-direction:column;gap:4px;font-size:14px;color:#3d4f63}
+.sidestat b{color:var(--k-green);font-size:15px;display:flex;align-items:center;gap:8px}
+.sidestat .dot{width:10px;height:10px;border-radius:50%;background:var(--k-green);display:inline-block}
+#teacher:fullscreen{display:block;padding:44px 56px}
+#teacher:fullscreen .side{display:none}
+@media(max-width:900px){
+  #teacher.panel.active{grid-template-columns:1fr;gap:16px;padding:16px}
+  .side{position:static}
+  .sidecard{padding:10px}.sidehd,.sidestat{display:none}
+  .side .tabs{flex-direction:row;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:6px;padding-bottom:2px}
+  .side .tab{width:auto;white-space:nowrap;padding:10px 14px;font-size:14px;border-radius:999px}
+  .side .ti{width:auto;font-size:16px}
+}

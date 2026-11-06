@@ -254,7 +254,10 @@ function renderTeacher() {
       `<div class="card" style="margin-bottom:12px"><b>${esc(nm(e.contestant_id))}</b> <span class="tag ${e.severity === "dq" ? "disqualified" : ""}">${e.severity === "dq" ? "disqualified" : "warning"}</span><p>${esc(e.reason)}</p><small>${new Date(e.created_at).toLocaleString()}</small></div>`).join("")
       : `<p class="empty">No security violations.</p>`}`;
   }
-  $("#teacher").innerHTML = (!S.creating ? `<nav class="tabs">${tabs.map(([k, l]) => `<button class="tab ${S.tab === k ? "on" : ""}" data-act="tab" data-id="${k}">${l}</button>`).join("")}</nav>` : "") + body;
+  const ico = { overview: "📊", contestants: "👥", words: "📝", drills: "🎯", matches: "⚔️", security: "🛡️", projector: "📺" };
+  const side = S.creating ? "" : `<aside class="side"><div class="sidecard"><div class="sidehd">TEACHER NAVIGATION</div><nav class="tabs">${tabs.map(([k, l]) => `<button class="tab ${S.tab === k ? "on" : ""}" data-act="tab" data-id="${k}"><span class="ti">${ico[k] || "•"}</span>${l}</button>`).join("")}</nav></div>${c ? `<div class="sidestat"><b><i class="dot"></i>${esc((c.status || "lobby").toUpperCase())}</b><span>Contest code <strong>${esc(c.code)}</strong></span></div>` : ""}</aside>`;
+  $("#teacher").classList.toggle("noside", !!S.creating);
+  $("#teacher").innerHTML = side + `<div class="tmain">${body}</div>`;
 }
 
 /* ---------- teacher: practice & quiz ---------- */
