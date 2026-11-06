@@ -225,8 +225,10 @@ body.auth .deco{display:block;position:fixed;inset:0;overflow:hidden;pointer-eve
 .sidestat{border:1px solid var(--line);border-radius:20px;padding:14px 16px;background:#f3f8f4;display:flex;flex-direction:column;gap:4px;font-size:14px;color:#3d4f63}
 .sidestat b{color:var(--k-green);font-size:15px;display:flex;align-items:center;gap:8px}
 .sidestat .dot{width:10px;height:10px;border-radius:50%;background:var(--k-green);display:inline-block}
-#teacher:fullscreen{display:block;padding:44px 56px}
+#teacher.panel.active:fullscreen,#teacher.noside.panel.active:fullscreen{display:block;grid-template-columns:none;padding:44px 56px;width:100%;max-width:none;margin:0;border-radius:0}
 #teacher:fullscreen .side{display:none}
+#teacher:fullscreen .tmain{width:100%}
+#teacher:fullscreen .ph{flex-wrap:wrap}
 @media(max-width:900px){
   #teacher.panel.active{grid-template-columns:1fr;gap:16px;padding:16px}
   .side{position:static}

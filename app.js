@@ -519,6 +519,11 @@ async function lookup(word) {
 }
 async function askMaster(words) {
   const out = {};
+  S.aiAuth = false;
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session || session.user.is_anonymous) {   // another tab of this browser signed in as a student (or the session ended)
+    S.aiDown = S.aiAuth = true; return out;
+  }
   for (let i = 0; i < words.length; i += 25) {
     const { data, error } = await sb.functions.invoke("ai-master", { body: { words: words.slice(i, i + 25) } });
     if (error || !data?.results) {
@@ -553,7 +558,8 @@ async function collectWords(inputId, existing, base, keep = false) {
     if (!ex) noEx.push(word);
     rows.push({ ...base, word, definition: def, example: ex });
   }
-  return { rows, notes: [S.aiDown && `AI Master is unavailable (${S.aiErr}), so the free dictionary was tried. Check that the ai-master function is deployed and its API key is set in Supabase.`,
+  return { rows, notes: [S.aiAuth && "Your teacher session ended. This browser is now signed in as a student or was signed out (a student or log-out in another tab does this). Log out, sign in as teacher again, and use a different browser or a phone for testing students. The free dictionary was tried meanwhile.",
+    S.aiDown && !S.aiAuth && `AI Master is unavailable (${S.aiErr}), so the free dictionary was tried. Check that the ai-master function is deployed and its API key is set in Supabase.`,
     nf.length && (keep ? `No definition found for: ${nf.join(", ")}. They were added anyway. Press Edit to type the definition (until then they are not given to students).` : `No dictionary entry: ${nf.join(", ")}.`),
     noEx.length && `No example sentence: ${noEx.join(", ")} (use Edit).`].filter(Boolean) };
 }
@@ -613,6 +619,11 @@ const act = {
   },
   copy() { navigator.clipboard.writeText(S.contest.code); toast("Code copied."); },
   async addWords() {
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user || user.is_anonymous || user.id !== S.contest.owner_id) {
+      toast("Your teacher session changed (another tab or a log-out). Reloading — please sign in again if asked.");
+      return loadTeacherContest();
+    }
     const r = await collectWords("wBulk", S.words, { contest_id: S.contest.id }); if (!r) return;
     if (r.rows.length) {
       const { error } = await sb.from("words").insert(r.rows);
