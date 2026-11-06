@@ -235,3 +235,44 @@ body.auth .deco{display:block;position:fixed;inset:0;overflow:hidden;pointer-eve
   .side .tab{width:auto;white-space:nowrap;padding:10px 14px;font-size:14px;border-radius:999px}
   .side .ti{width:auto;font-size:16px}
 }
+
+
+/* ================= Student interface: game-style theme ================= */
+:root{--k-red:#f04458;--k-blue:#2476e8;--k-yellow:#ffc533;--k-green:#0f9d74}
+body.stu{background:radial-gradient(1000px 600px at 85% -10%,#0d4a73,transparent 60%),var(--k-bg);color:#fff;min-height:100vh}
+body.stu .bar{background:rgba(0,0,0,.28);font-family:var(--sans);padding:16px 22px}
+body.stu .brand{font:800 22px var(--sans);letter-spacing:.14em}
+body.stu .bar p{display:none}
+body.stu .pill{background:var(--k-green);font:800 14px var(--sans);padding:10px 18px;box-shadow:0 3px 0 rgba(0,0,0,.25)}
+body.stu .out{border-radius:12px;border-width:2px;font:800 14px var(--sans);padding:9px 16px}
+body.stu #student.panel{background:none;box-shadow:none;padding:0;border-radius:0;margin:28px auto 60px;width:min(560px,calc(100% - 32px))}
+body.stu #student .sub{font:600 18px/1.5 var(--sans);color:#cfe0f2;margin-bottom:20px}
+body.stu #student .title.sm{font:800 30px var(--sans);letter-spacing:0;color:#1b2a3b;margin:6px 0 10px}
+
+/* cards */
+body.stu #student .center,body.stu #student .wordcard,body.stu #student .card{position:relative;background:#fff;color:#1b2a3b;border:0;border-radius:22px;box-shadow:0 8px 0 rgba(0,0,0,.28);padding:34px 24px 28px;overflow:hidden;margin-bottom:20px}
+body.stu #student .center::before,body.stu #student .wordcard::before{content:"";position:absolute;inset:0 0 auto 0;height:10px;background:linear-gradient(90deg,var(--k-red) 0 25%,var(--k-blue) 25% 50%,var(--k-yellow) 50% 75%,var(--k-green) 75%)}
+body.stu #student .center .sub,body.stu #student .wordcard .sub,body.stu #student .card .sub{color:#5a7a9d}
+body.stu #student .wordcard{padding-top:38px}
+body.stu #student .wordcard p{font:700 21px/1.5 var(--sans);color:#1b2a3b}
+body.stu #student .wordcard p.sub{font:600 14px/1.5 var(--sans);color:#6c8299}
+body.stu #student .big{font-size:72px;line-height:1.1}
+
+/* buttons */
+body.stu #student .btn{border-radius:14px;padding:17px 20px;font:800 18px var(--sans);letter-spacing:.02em;box-shadow:0 5px 0 rgba(0,0,0,.3);transition:transform .1s,box-shadow .1s;width:100%}
+body.stu #student .btn:active{transform:translateY(4px);box-shadow:0 1px 0 rgba(0,0,0,.3)}
+body.stu #student [data-act=speak],body.stu #student [data-act=drillSpeak]{background:var(--k-blue);font-size:22px;padding:20px}
+body.stu #student [data-act=submit]{background:var(--k-green)}
+body.stu #student [data-act=drillNext],body.stu #student [data-act=drillAgain]{background:var(--k-yellow);color:#1b1b1b}
+body.stu #student .btn:hover{filter:brightness(1.07)}
+body.stu #student .btn:focus-visible{outline:4px solid #fff;outline-offset:3px}
+
+/* answer box */
+body.stu #student #ans{width:100%;background:#fff;color:#1b2a3b;border:3px solid transparent;border-radius:14px;padding:18px;margin-bottom:14px;text-align:center;font:800 28px var(--sans);letter-spacing:.08em;box-shadow:0 5px 0 rgba(0,0,0,.2)}
+body.stu #student #ans::placeholder{color:#8a9bae;font-weight:700;letter-spacing:.02em;font-size:20px}
+body.stu #student #ans:focus{outline:none;border-color:var(--k-yellow)}
+
+/* progress */
+body.stu #student .dbar{height:14px;background:rgba(255,255,255,.18);border-radius:99px;overflow:hidden}
+body.stu #student .dbar i{display:block;height:100%;background:linear-gradient(90deg,var(--k-yellow),var(--k-green));border-radius:99px;transition:width .3s}
+@media(max-width:600px){body.stu #student.panel{margin-top:18px}body.stu #student .title.sm{font-size:26px}}

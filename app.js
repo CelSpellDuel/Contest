@@ -18,6 +18,7 @@ function pill(t, c = "") { $("#pill").textContent = t; $("#pill").className = "p
 function show(id) {
   document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === id));
   $("#hLogout").hidden = !["teacher", "student"].includes(id);
+  document.body.classList.toggle("stu", id === "student");
   document.body.classList.toggle("auth", ["landing", "teacherLogin", "studentJoin"].includes(id));
 }
 function go(id) {
