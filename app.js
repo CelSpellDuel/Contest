@@ -18,6 +18,7 @@ function pill(t, c = "") { $("#pill").textContent = t; $("#pill").className = "p
 function show(id) {
   document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === id));
   $("#hLogout").hidden = !["teacher", "student"].includes(id);
+  document.body.classList.toggle("auth", ["landing", "teacherLogin", "studentJoin"].includes(id));
 }
 function go(id) {
   if (id === "landing") { leave(); pill("READY"); }
@@ -727,6 +728,8 @@ document.addEventListener("click", e => {
   if (t.dataset.go) go(t.dataset.go); else act[t.dataset.act]?.(t.dataset);
 });
 document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && ["tEmail", "tPass"].includes(e.target.id)) return act.teacherLogin();
+  if (e.key === "Enter" && ["sCode", "sName", "sNo"].includes(e.target.id)) return act.join();
   if (e.key === "Enter" && e.target.id === "ans") act.submit();
   if ((e.key === "f" || e.key === "F") && S.role === "teacher" && S.tab === "projector" && !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) act.full();
 });

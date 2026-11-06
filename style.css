@@ -138,3 +138,73 @@ svg,img{max-width:100%}
 .dbar{height:10px;border-radius:999px;background:#e8eef5;overflow:hidden}
 .dbar i{display:block;height:100%;background:var(--green);border-radius:999px;transition:width .25s}
 #defText[hidden]{display:none}
+
+
+/* ================= Login screens (landing, teacher, student) ================= */
+:root{--k-red:#e21b3c;--k-blue:#1368ce;--k-yellow:#ffa602;--k-green:#26890c;--k-bg:#0f2a47;--k-bg2:#0b3a5e}
+body.auth{background:radial-gradient(1200px 700px at 15% 0%,var(--k-bg2),transparent 60%),var(--k-bg);min-height:100vh;color:#fff}
+body.auth .bar{display:none}
+body.auth main{position:relative;z-index:1;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 0}
+body.auth main .screen:not(.active){display:none}
+
+/* floating shapes */
+.deco{display:none}
+body.auth .deco{display:block;position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:0}
+.sh{position:absolute;display:block;opacity:.9}
+.sh.tri{left:6%;top:12%;width:0;height:0;border-left:44px solid transparent;border-right:44px solid transparent;border-bottom:76px solid var(--k-red);transform:rotate(-14deg)}
+.sh.dia{right:8%;top:10%;width:70px;height:70px;background:var(--k-blue);transform:rotate(45deg);border-radius:8px}
+.sh.cir{left:9%;bottom:10%;width:80px;height:80px;border-radius:50%;background:var(--k-yellow)}
+.sh.sq{right:7%;bottom:12%;width:68px;height:68px;border-radius:10px;background:var(--k-green);transform:rotate(12deg)}
+@media(prefers-reduced-motion:no-preference){
+  .sh.tri{animation:fl 7s ease-in-out infinite}.sh.dia{animation:fl 8s ease-in-out -2s infinite}
+  .sh.cir{animation:fl 9s ease-in-out -4s infinite}.sh.sq{animation:fl 6.5s ease-in-out -1s infinite}
+  @keyframes fl{50%{translate:0 -14px}}
+}
+
+/* logo made of colored tiles */
+.logo{display:flex;justify-content:center;gap:6px;margin:0 0 12px;flex-wrap:nowrap}
+.lt{display:grid;place-items:center;width:clamp(36px,6.4vw,76px);height:clamp(44px,7.8vw,92px);border-radius:12px;color:#fff;font:800 clamp(24px,4.4vw,52px) var(--sans);box-shadow:0 5px 0 rgba(0,0,0,.28)}
+.lt.c1{background:var(--k-red)}.lt.c2{background:var(--k-blue)}.lt.c3{background:var(--k-yellow);color:#1b1b1b}.lt.c4{background:var(--k-green)}
+.logo.sm{display:none}
+
+/* landing */
+#landing.panel{background:none;box-shadow:none;padding:0;width:min(860px,calc(100% - 32px))}
+#landing .sub{color:#cfe0f2;font:600 clamp(16px,2.2vw,22px)/1.5 var(--sans);margin:18px 0 34px}
+#landing .modes{gap:20px}
+#landing .mode{border:0;border-radius:18px;color:#fff;padding:44px 18px;gap:8px;box-shadow:0 8px 0 rgba(0,0,0,.3);transition:transform .12s,box-shadow .12s}
+#landing .mode:hover{transform:translateY(-3px);box-shadow:0 11px 0 rgba(0,0,0,.3)}
+#landing .mode:active{transform:translateY(5px);box-shadow:0 3px 0 rgba(0,0,0,.3)}
+#landing .mode.m-student{background:var(--k-green)}
+#landing .mode.m-teacher{background:var(--k-blue)}
+#landing .mode b{font:800 34px var(--sans)}
+#landing .mode i{color:rgba(255,255,255,.88);font-weight:600}
+#landing .mode:focus-visible,.auth-screen .btn:focus-visible{outline:4px solid #fff;outline-offset:3px}
+
+/* sign-in / join cards */
+.auth-screen.panel.narrow{background:#fff;border-radius:18px;padding:30px 30px 26px;width:min(440px,calc(100% - 32px));box-shadow:0 10px 0 rgba(0,0,0,.28);color:#1b1b1b;border-top:10px solid var(--k-blue);overflow:visible}
+.auth-screen.panel.narrow.s-card{border-top-color:var(--k-green)}
+.auth-screen .logo.sm{display:flex;margin-bottom:18px}
+.auth-screen .logo.sm .lt{width:34px;height:42px;font-size:22px;border-radius:8px;box-shadow:0 3px 0 rgba(0,0,0,.25)}
+.auth-screen .title.sm{font:800 26px var(--sans);letter-spacing:0;color:#1b1b1b;margin:0 0 18px}
+.auth-screen input{border:2px solid #cfd6df;border-radius:10px;padding:15px 16px;margin-bottom:12px;font-size:17px;font-weight:600;color:#1b1b1b;background:#fff}
+.auth-screen input::placeholder{color:#7a8794;font-weight:600}
+.auth-screen input:focus{outline:none;border-color:var(--k-blue);box-shadow:0 0 0 4px rgba(19,104,206,.18)}
+.auth-screen.s-card input:focus{border-color:var(--k-green);box-shadow:0 0 0 4px rgba(38,137,12,.18)}
+.auth-screen .codein{text-align:center;font-size:24px;letter-spacing:.18em;text-transform:uppercase}
+.auth-screen .btn{border-radius:10px;padding:16px;font:800 18px var(--sans);letter-spacing:.02em;box-shadow:0 5px 0 rgba(0,0,0,.28);transition:transform .1s,box-shadow .1s;margin-top:4px}
+.auth-screen .btn:active{transform:translateY(4px);box-shadow:0 1px 0 rgba(0,0,0,.28)}
+.auth-screen.t-card .btn{background:var(--k-blue)}.auth-screen.t-card .btn:hover{background:#0f57ad}
+.auth-screen.s-card .btn{background:var(--k-green)}.auth-screen.s-card .btn:hover{background:#1f7309}
+.auth-screen .link{color:#4a5a6b;font-weight:700;margin-top:20px}
+.auth-screen .link:hover{color:#1b1b1b}
+
+@media(max-width:600px){
+  body.auth main{align-items:flex-start;padding-top:8vh}
+  .logo{gap:4px}
+  #landing .modes{grid-template-columns:1fr;gap:16px}
+  #landing .mode{display:flex;flex-direction:column;text-align:center;padding:28px 16px}
+  #landing .mode .emoji{grid-row:auto;font-size:44px;width:auto;height:auto}
+  #landing .mode b{font-size:26px}
+  .sh{transform:scale(.6)}
+  .auth-screen.panel.narrow{padding:24px 20px 22px;margin:0 auto}
+}

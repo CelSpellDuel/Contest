@@ -7,7 +7,8 @@
   <title>SpellDuel</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="auth">
+  <div class="deco" aria-hidden="true"><i class="sh tri"></i><i class="sh dia"></i><i class="sh cir"></i><i class="sh sq"></i></div>
   <header class="bar">
     <div>
       <h1 class="brand">SPELLDUEL</h1>
@@ -17,30 +18,32 @@
   </header>
 
   <main>
-    <section id="landing" class="screen panel active">
-      <h2 class="title">SPELLDUEL</h2>
+    <section id="landing" class="screen panel active auth-screen">
+      <h2 class="logo" aria-label="SpellDuel"><span class="lt c1">S</span><span class="lt c2">P</span><span class="lt c3">E</span><span class="lt c4">L</span><span class="lt c1">L</span><span class="lt c2">D</span><span class="lt c3">U</span><span class="lt c4">E</span><span class="lt c1">L</span></h2>
       <p class="sub">Live spelling duels, automatic judging, and a big-screen live display.</p>
       <div class="modes">
-        <button class="mode" data-go="teacherLogin"><span class="emoji">👩‍🏫</span><b>Teacher</b><i>Dashboard &amp; Contest Control</i></button>
-        <button class="mode" data-go="studentJoin"><span class="emoji">📱</span><b>Student</b><i>Join a Contest</i></button>
+        <button class="mode m-student" data-go="studentJoin"><span class="emoji">📱</span><b>Student</b><i>Join a Contest</i></button>
+        <button class="mode m-teacher" data-go="teacherLogin"><span class="emoji">👩‍🏫</span><b>Teacher</b><i>Dashboard &amp; Contest Control</i></button>
       </div>
     </section>
 
-    <section id="teacherLogin" class="screen panel narrow">
+    <section id="teacherLogin" class="screen panel narrow auth-screen t-card">
+      <h2 class="logo sm" aria-label="SpellDuel"><span class="lt c1">S</span><span class="lt c2">P</span><span class="lt c3">E</span><span class="lt c4">L</span><span class="lt c1">L</span><span class="lt c2">D</span><span class="lt c3">U</span><span class="lt c4">E</span><span class="lt c1">L</span></h2>
       <h2 class="title sm">Teacher sign in</h2>
       <input id="tEmail" type="email" placeholder="Email" autocomplete="username">
       <input id="tPass" type="password" placeholder="Password" autocomplete="current-password">
       <button class="btn" data-act="teacherLogin">Sign in</button>
-      <button class="link" data-go="landing">Back</button>
+      <button class="link" data-go="landing">← Back</button>
     </section>
 
-    <section id="studentJoin" class="screen panel narrow">
+    <section id="studentJoin" class="screen panel narrow auth-screen s-card">
+      <h2 class="logo sm" aria-label="SpellDuel"><span class="lt c1">S</span><span class="lt c2">P</span><span class="lt c3">E</span><span class="lt c4">L</span><span class="lt c1">L</span><span class="lt c2">D</span><span class="lt c3">U</span><span class="lt c4">E</span><span class="lt c1">L</span></h2>
       <h2 class="title sm">Join</h2>
-      <input id="sCode" placeholder="Contest, practice or quiz code" maxlength="10" autocapitalize="characters">
-      <input id="sName" placeholder="Full name">
+      <input id="sCode" class="codein" placeholder="Game code" maxlength="10" autocapitalize="characters" autocomplete="off" inputmode="text">
+      <input id="sName" placeholder="Full name" autocomplete="name">
       <input id="sNo" placeholder="Student number (optional)">
       <button class="btn" data-act="join">Join</button>
-      <button class="link" data-go="landing">Back</button>
+      <button class="link" data-go="landing">← Back</button>
     </section>
 
     <section id="teacher" class="screen panel wide"></section>
